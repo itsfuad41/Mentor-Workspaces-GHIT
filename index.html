@@ -1572,5 +1572,63 @@ qcDetail=function(i){
   box.style.maxWidth="96vw";
 };
 </script>
+  <script>
+/* ===== Keep table sort after re-render (Mark Done, Running, Reject, sync refresh, etc.) ===== */
+let _applyingSort = false;
+
+/* Same sort as before, but with a "reapply" mode that keeps the current direction instead of toggling */
+function sortTableByHeader(header, reapply){
+  const table = header.closest("table"), body = table?.tBodies[0];
+  if(!body) return;
+  const column = [...header.parentElement.children].indexOf(header);
+  const sameColumn = table.dataset.sortColumn === String(column);
+  const ascending = reapply ? table.dataset.sortDirection !== "desc"
+                            : (sameColumn ? table.dataset.sortDirection !== "asc" : true);
+
+  table.dataset.sortColumn = String(column);
+  table.dataset.sortDirection = ascending ? "asc" : "desc";
+  table.querySelectorAll("thead th .sort-direction").forEach(i => i.textContent = "A-Z");
+  const indicator = header.querySelector(".sort-direction");
+  if(indicator) indicator.textContent = ascending ? "A-Z" : "Z-A";
+
+  const rows = [...body.rows], groups = [];
+  for(let index = 0; index < rows.length;){
+    const row = rows[index];
+    const span = Math.max(1, ...[...row.cells].map(c => c.rowSpan || 1));
+    groups.push(rows.slice(index, index + span));
+    index += span;
+  }
+  const getValue = group => {
+    let position = 0;
+    for(const cell of group[0].cells){
+      const colspan = cell.colSpan || 1;
+      if(column >= position && column < position + colspan)
+        return cell.textContent.replace(/\s+A-Z\s*$/, " ").replace(/\s+Z-A\s*$/, " ");
+      position += colspan;
+    }
+    return "";
+  };
+  groups.sort((l, r) => compareHeaderValues(getValue(l), getValue(r)) * (ascending ? 1 : -1));
+  groups.forEach(g => g.forEach(r => body.appendChild(r)));
+}
+
+/* Watch every table body; when its rows are replaced, sort them again */
+document.querySelectorAll("table").forEach(table => {
+  const body = table.tBodies[0];
+  if(!body) return;
+  const obs = new MutationObserver(() => {
+    if(_applyingSort) return;
+    if(table.dataset.sortColumn === undefined) return;
+    const header = table.tHead?.rows[0]?.cells[+table.dataset.sortColumn];
+    if(!header || !header.classList.contains("sortable-header")) return;
+    _applyingSort = true;
+    try { sortTableByHeader(header, true); } finally {
+      obs.takeRecords();      // ignore the mutations caused by our own reordering
+      _applyingSort = false;
+    }
+  });
+  obs.observe(body, { childList: true });
+});
+</script>
 </body>
 </html>
