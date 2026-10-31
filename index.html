@@ -1667,5 +1667,107 @@ document.querySelectorAll("table").forEach(table => {
   obs.observe(body, { childList: true });
 });
 </script>
+<!-- ===== Admin Operator Lookup (keyboard shortcut popup) ===== -->
+<style>
+#opLookupOverlay{position:fixed;inset:0;background:rgba(15,25,35,.35);display:flex;align-items:flex-start;justify-content:center;padding-top:12vh;z-index:60}
+#opLookupOverlay.hidden{display:none}
+#opLookupBox{position:relative;background:#fff;border-radius:8px;padding:16px 18px 18px;width:min(380px,calc(100% - 32px));box-shadow:0 12px 36px rgba(15,25,35,.35);border-top:4px solid var(--blue)}
+#opLookupBox h3{margin:0 0 10px;font-size:15px;color:var(--navy)}
+#opLookupClose{position:absolute;top:6px;right:8px;background:transparent;color:#334155;border:0;font-size:20px;line-height:1;padding:4px 8px}
+#opLookupInput{width:100%;padding:9px 10px;font-size:15px;border:1px solid var(--line);border-radius:4px}
+#opLookupInput:focus{outline:2px solid var(--blue);outline-offset:0}
+#opLookupResult{margin-top:12px;min-height:118px;border:1px solid var(--line);border-radius:4px;padding:10px 12px;background:#f8fafc}
+#opLookupResult .ol-msg{color:#64748b}
+#opLookupResult .ol-msg.err{color:var(--red)}
+#opLookupResult dl{margin:0;display:grid;grid-template-columns:104px 1fr;row-gap:7px}
+#opLookupResult dt{font-weight:600;color:#475569}
+#opLookupResult dd{margin:0;word-break:break-word}
+#opLookupResult .ol-badge{display:inline-block;padding:1px 9px;border-radius:10px;font-weight:600;color:#fff;background:var(--green)}
+#opLookupResult .ol-badge.inactive{background:var(--red)}
+#opLookupHint{margin:8px 0 0;font-size:11px;color:#64748b}
+</style>
+<div id="opLookupOverlay" class="hidden" role="dialog" aria-modal="true" aria-label="Operator lookup">
+  <div id="opLookupBox">
+    <button type="button" id="opLookupClose" aria-label="Close">&times;</button>
+    <h3>Operator Lookup</h3>
+    <input id="opLookupInput" type="text" placeholder="Type Operator ID and press Enter" autocomplete="off" spellcheck="false">
+    <div id="opLookupResult" aria-live="polite"><span class="ol-msg">Enter an Operator ID to see details.</span></div>
+    <p id="opLookupHint"></p>
+  </div>
+</div>
+<script>
+(function(){
+  /* Change the shortcut here. code = physical key (KeyO = the O key). Default: Alt + O */
+  const SHORTCUT={code:"KeyO",alt:true,ctrl:false,shift:false,label:"Alt + O"};
+
+  const overlay=document.getElementById("opLookupOverlay"),
+        input=document.getElementById("opLookupInput"),
+        result=document.getElementById("opLookupResult"),
+        hint=document.getElementById("opLookupHint");
+  let reqId=0,timer=null;
+  hint.textContent=SHORTCUT.label+" opens this window · Enter to search · Esc to close";
+
+  const isAdmin=()=>{try{return typeof currentUser!=="undefined"&&currentUser&&String(currentUser.role||"").toLowerCase()==="admin";}catch(_){return false;}};
+  const appVisible=()=>{const app=document.getElementById("app");return !!app&&!app.classList.contains("hidden");};
+  const isOpen=()=>!overlay.classList.contains("hidden");
+
+  function message(text,isError){
+    result.textContent="";
+    const s=document.createElement("span");s.className="ol-msg"+(isError?" err":"");s.textContent=text;result.appendChild(s);
+  }
+  function showOperator(o){
+    result.textContent="";
+    const dl=document.createElement("dl"),status=String(o.status||"Active").trim()||"Active";
+    const add=(label,node)=>{const dt=document.createElement("dt"),dd=document.createElement("dd");dt.textContent=label;if(typeof node==="string")dd.textContent=node||"-";else dd.appendChild(node);dl.append(dt,dd);};
+    add("Operator ID",o.op_id);
+    add("Name",o.full_name);
+    add("Mentor Name",o.mentor_name);
+    const badge=document.createElement("span");badge.className="ol-badge"+(status.toLowerCase()==="inactive"?" inactive":"");badge.textContent=status;
+    add("Status",badge);
+    result.appendChild(dl);
+  }
+
+  async function lookup(){
+    const id=input.value.trim(),mine=++reqId;
+    if(!id){message("Enter an Operator ID to see details.");return;}
+    if(typeof supabaseClient==="undefined"||!supabaseClient){message("Cloud connection is not available.",true);return;}
+    message("Searching…");
+    const cols="op_id,full_name,mentor_name,status";
+    let{data,error}=await supabaseClient.from("operators").select(cols).eq("op_id",id).limit(1);
+    if(!error&&!(data&&data.length)){
+      /* fall back to a case-insensitive exact match (escape LIKE wildcards) */
+      ({data,error}=await supabaseClient.from("operators").select(cols).ilike("op_id",id.replace(/[\\%_]/g,"\\$&")).limit(1));
+    }
+    if(mine!==reqId)return; /* a newer search replaced this one */
+    if(error){message(error.message||"Lookup failed.",true);return;}
+    if(!data||!data.length){message(`No operator found with ID '${id}'.`,true);return;}
+    showOperator(data[0]);
+  }
+
+  function open(){
+    if(!isAdmin()||!appVisible())return;
+    overlay.classList.remove("hidden");
+    input.focus();input.select();
+    if(input.value.trim())lookup();
+  }
+  function close(){overlay.classList.add("hidden");clearTimeout(timer);reqId++;}
+
+  document.addEventListener("keydown",e=>{
+    if(e.code===SHORTCUT.code&&e.altKey===SHORTCUT.alt&&e.ctrlKey===SHORTCUT.ctrl&&e.shiftKey===SHORTCUT.shift&&!e.metaKey){
+      if(!isAdmin()||!appVisible())return;
+      e.preventDefault();
+      isOpen()?close():open();
+      return;
+    }
+    if(e.key==="Escape"&&isOpen()){e.preventDefault();e.stopPropagation();close();}
+  },true);
+
+  input.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();clearTimeout(timer);lookup();}});
+  input.addEventListener("input",()=>{clearTimeout(timer);timer=setTimeout(lookup,400);});
+  document.getElementById("opLookupClose").addEventListener("click",close);
+  overlay.addEventListener("mousedown",e=>{if(e.target===overlay)close();});
+})();
+</script>
+
 </body>
 </html>
