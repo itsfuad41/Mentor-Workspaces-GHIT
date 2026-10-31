@@ -315,6 +315,11 @@
       const names = [currentUser.full_name, currentUser.username].filter(Boolean).map(norm);
       return names.some(name => mentor === name || (name.length > 2 && mentor.includes(name)) || (mentor.length > 2 && name.includes(mentor)));
     }
+    /* A Done part counts for whoever marked it Done (doneBy). Older parts with no doneBy fall back to the part's mentor. */
+    function isDoneByMe(p){
+      if(!p || norm(p.status) !== "done") return false;
+      return p.doneBy ? mentorMatchesCurrentUser(p.doneBy) : mentorMatchesCurrentUser(p.mentorName);
+    }
 
     /* ===== mergeUpload: Default to 'add', sync Done silently with today stamp ===== */
     function mergeUpload(existingRows, rows, mode="add"){
@@ -506,7 +511,7 @@
 
       // 2. Mentor Live Status Metrics on Status View toolbar
       const myAllParts = rows.filter(p => mentorMatchesCurrentUser(p.mentorName));
-      const myDoneParts = myAllParts.filter(p => norm(p.status) === "done");
+      const myDoneParts = rows.filter(isDoneByMe);
       const myPendingParts = myAllParts.filter(p => ["entry","entrycomplete","running","reject"].includes(norm(p.status)));
       const myDoneEntrySum = myDoneParts.reduce((s, p) => s + numVal(p.entry), 0);
 
@@ -652,12 +657,12 @@
     
     function doneEntryCount(projectName){
       return (projects[projectName]||[])
-        .filter(row=>norm(row.status)==="done"&&mentorMatchesCurrentUser(row.mentorName))
+        .filter(isDoneByMe)
         .reduce((total,row)=>total+numVal(row.entry),0);
     }
     function donePartsCount(projectName){
       return (projects[projectName]||[])
-        .filter(row=>norm(row.status)==="done"&&mentorMatchesCurrentUser(row.mentorName))
+        .filter(isDoneByMe)
         .length;
     }
 
@@ -721,7 +726,7 @@
           if(revertDone){
             Object.values(projects).forEach(rows => {
               rows.forEach(p => {
-                if(norm(p.status) === "done" && mentorMatchesCurrentUser(p.mentorName)){
+                if(isDoneByMe(p)){
                   p.status = "Running";
                   delete p.doneDate;
                   delete p.doneTime;
@@ -955,7 +960,7 @@
         (pRows || []).forEach((p, idx) => {
           if(norm(p.status) === "done"){
             // Mentor scope
-            if(mentorScope === "mine" && !mentorMatchesCurrentUser(p.mentorName)) return;
+            if(mentorScope === "mine" && !isDoneByMe(p)) return;
             if(mentorScope && mentorScope !== "mine" && norm(p.mentorName) !== norm(mentorScope)) return;
 
             // Entry count filter
@@ -1533,8 +1538,8 @@ async function renameOnline(oldName,newName){tomb.set(oldName,Date.now());if(!is
 const canSeeAllWork=()=>true,mineOnly=()=>false;
 
 /* Production Summary counts: strictly logged-in mentor's done parts */
-function doneEntryCount(projectName){return(projects[projectName]||[]).filter(r=>norm(r.status)==="done"&&mentorMatchesCurrentUser(r.mentorName)).reduce((t,r)=>t+numVal(r.entry),0);}
-function donePartsCount(projectName){return(projects[projectName]||[]).filter(r=>norm(r.status)==="done"&&mentorMatchesCurrentUser(r.mentorName)).length;}
+function doneEntryCount(projectName){return(projects[projectName]||[]).filter(isDoneByMe).reduce((t,r)=>t+numVal(r.entry),0);}
+function donePartsCount(projectName){return(projects[projectName]||[]).filter(isDoneByMe).length;}
 
 /* Status Manager + Done Parts List: normal users locked to "My Mentor Work" */
 const _renderAllScoped=renderAll;
