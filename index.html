@@ -262,7 +262,7 @@
             <div class="toolbar"><input id="opSearch" placeholder="Search operator ID, name, or mentor..." oninput="filterOperatorsTable()" style="min-width:260px"></div>
           </div>
           <div class="surface"><table><thead><tr><th>Operator ID</th><th>Full Name</th><th>Mentor Name</th><th>Status</th></tr></thead><tbody id="opsBody"></tbody></table></div>
-          <div class="toolbar"><button class="blue" onclick="editSelectedOperator()">Edit Selected Operator</button><button class="red" onclick="deleteSelectedOperator()">Delete Selected Operator</button></div>
+          <div class="toolbar"><button class="blue" onclick="editSelectedOperator()">Edit Selected Operator</button><button class="red" onclick="deleteSelectedOperator()">Delete Selected Operator</button><button class="green" onclick="openOperatorLookup()">🔍 Operator Lookup (<span id="opLookupBtnKey">Alt + O</span>)</button></div>
         </div>
         <div id="localView" class="hidden"><div class="surface" style="max-height:none;overflow:visible;padding:12px"><h3 style="margin:0 0 8px">Project Excel Data — Stored on your PC</h3><p style="margin:0">Projects <b>and mentors’ work</b> (part statuses, production drafts, QC lists) are stored by the <b>Fuad's Project Server</b> program on your PC. Everything a mentor does is saved there and shows up live in every other browser the same user or team opens. Keep that program running.</p></div><div class="surface" style="max-height:none;overflow:visible;padding:12px"><h3 style="margin:0 0 8px">Projects on the PC server</h3><div class="toolbar"><button class="blue" onclick="loadOnlineProjects()">🔄 Refresh List</button><button class="green" onclick="pushProjectsOnline()">⬆ Send all browser projects to PC</button><button class="amber" onclick="openPcSettings()">⚙ Server Settings</button><button class="blue" onclick="showPcConfigSql()">Setup SQL (first time)</button></div><p id="onlineMsg" style="font-weight:600"></p></div><div class="surface"><table><thead><tr><th>Project</th><th>Parts</th><th>Last saved from web</th><th>Saved by</th><th>Actions</th></tr></thead><tbody id="onlineBody"></tbody></table></div><div class="surface" style="max-height:none;overflow:visible;padding:12px"><h3 style="margin:0 0 8px">Project Excel uploads — who uploaded &amp; who is working</h3><p style="margin:0 0 8px">When a mentor uploads a project Excel it stays in their browser until you send it. Click <b>Send to all users</b> to put it on the PC server so everyone gets it live. <b>Working on it</b> lists users who saved changes to that project (green = within the last 10 minutes).</p><div class="toolbar"><button class="blue" onclick="loadUploads()">🔄 Refresh Uploads</button></div><p id="uploadsMsg" style="font-weight:600"></p></div><div class="surface"><table><thead><tr><th>Project</th><th>Uploaded by</th><th>Excel file</th><th>Uploaded at</th><th>Parts</th><th>Working on it</th><th>Status</th><th>Actions</th></tr></thead><tbody id="uploadsBody"><tr><td colspan="8">Open this tab to load uploads.</td></tr></tbody></table></div></div>
       </section>
@@ -1671,7 +1671,7 @@ document.querySelectorAll("table").forEach(table => {
 <style>
 #opLookupOverlay{position:fixed;inset:0;background:rgba(15,25,35,.35);display:flex;align-items:flex-start;justify-content:center;padding-top:12vh;z-index:60}
 #opLookupOverlay.hidden{display:none}
-#opLookupBox{position:relative;background:#fff;border-radius:8px;padding:16px 18px 18px;width:min(380px,calc(100% - 32px));box-shadow:0 12px 36px rgba(15,25,35,.35);border-top:4px solid var(--blue)}
+#opLookupBox{position:relative;background:#fff;border-radius:8px;padding:16px 18px 14px;width:min(380px,calc(100% - 32px));box-shadow:0 12px 36px rgba(15,25,35,.35);border-top:4px solid var(--blue)}
 #opLookupBox h3{margin:0 0 10px;font-size:15px;color:var(--navy)}
 #opLookupClose{position:absolute;top:6px;right:8px;background:transparent;color:#334155;border:0;font-size:20px;line-height:1;padding:4px 8px}
 #opLookupInput{width:100%;padding:9px 10px;font-size:15px;border:1px solid var(--line);border-radius:4px}
@@ -1684,7 +1684,13 @@ document.querySelectorAll("table").forEach(table => {
 #opLookupResult dd{margin:0;word-break:break-word}
 #opLookupResult .ol-badge{display:inline-block;padding:1px 9px;border-radius:10px;font-weight:600;color:#fff;background:var(--green)}
 #opLookupResult .ol-badge.inactive{background:var(--red)}
-#opLookupHint{margin:8px 0 0;font-size:11px;color:#64748b}
+#opLookupFooter{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;padding-top:9px;border-top:1px solid var(--line);font-size:12px;color:#475569}
+#opLookupFooter kbd{font:600 12px 'Segoe UI',sans-serif;background:#eef1f4;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:1px 7px;color:var(--navy)}
+#opLookupFooter kbd.capturing{background:#fff7e6;border-color:var(--amber);color:var(--amber)}
+#opLookupFooter button{padding:3px 10px;font-size:12px}
+#opLookupShortMsg{margin:6px 0 0;font-size:12px;min-height:16px;color:#64748b}
+#opLookupShortMsg.err{color:var(--red)}
+#opLookupShortMsg.ok{color:var(--green)}
 </style>
 <div id="opLookupOverlay" class="hidden" role="dialog" aria-modal="true" aria-label="Operator lookup">
   <div id="opLookupBox">
@@ -1692,21 +1698,63 @@ document.querySelectorAll("table").forEach(table => {
     <h3>Operator Lookup</h3>
     <input id="opLookupInput" type="text" placeholder="Type Operator ID and press Enter" autocomplete="off" spellcheck="false">
     <div id="opLookupResult" aria-live="polite"><span class="ol-msg">Enter an Operator ID to see details.</span></div>
-    <p id="opLookupHint"></p>
+    <div id="opLookupFooter">
+      <span>Shortcut: <kbd id="opLookupKeyLabel"></kbd></span>
+      <button type="button" class="blue" id="opLookupChange">Change</button>
+      <button type="button" id="opLookupReset">Reset</button>
+    </div>
+    <p id="opLookupShortMsg" aria-live="polite"></p>
   </div>
 </div>
 <script>
 (function(){
-  /* Change the shortcut here. code = physical key (KeyO = the O key). Default: Alt + O */
-  const SHORTCUT={code:"KeyO",alt:true,ctrl:false,shift:false,label:"Alt + O"};
+  const STORE="MW_OP_LOOKUP_SHORTCUT",DEFAULT={code:"KeyO",alt:true,ctrl:false,shift:false};
 
   const overlay=document.getElementById("opLookupOverlay"),
         input=document.getElementById("opLookupInput"),
         result=document.getElementById("opLookupResult"),
-        hint=document.getElementById("opLookupHint");
-  let reqId=0,timer=null;
-  hint.textContent=SHORTCUT.label+" opens this window · Enter to search · Esc to close";
+        keyLabel=document.getElementById("opLookupKeyLabel"),
+        changeBtn=document.getElementById("opLookupChange"),
+        shortMsg=document.getElementById("opLookupShortMsg");
+  let reqId=0,timer=null,capturing=false;
 
+  /* ---------- shortcut storage + display ---------- */
+  const keyName=code=>String(code).replace(/^Key/,"").replace(/^Digit/,"").replace(/^Numpad/,"Num ").replace(/^Arrow/,"").replace("Backquote","`").replace("Minus","-").replace("Equal","=").replace("Slash","/").replace("Period",".").replace("Comma",",").replace("Semicolon",";").replace("Quote","'").replace("BracketLeft","[").replace("BracketRight","]").replace("Backslash","\\");
+  const labelOf=sc=>[sc.ctrl&&"Ctrl",sc.alt&&"Alt",sc.shift&&"Shift",keyName(sc.code)].filter(Boolean).join(" + ");
+  function loadShortcut(){
+    try{const o=JSON.parse(localStorage.getItem(STORE)||"null");if(o&&typeof o.code==="string"&&o.code&&(o.alt||o.ctrl||o.shift))return{code:o.code,alt:!!o.alt,ctrl:!!o.ctrl,shift:!!o.shift};}catch(_){}
+    return{...DEFAULT};
+  }
+  function storeShortcut(sc){try{if(sc)localStorage.setItem(STORE,JSON.stringify(sc));else localStorage.removeItem(STORE);}catch(_){}}
+  let shortcut=loadShortcut();
+  function renderLabel(){
+    keyLabel.textContent=labelOf(shortcut);keyLabel.classList.remove("capturing");
+    const b=document.getElementById("opLookupBtnKey");if(b)b.textContent=labelOf(shortcut);
+  }
+  function note(text,kind){shortMsg.textContent=text||"";shortMsg.className=kind||"";}
+  renderLabel();
+
+  /* shortcuts the browser keeps for itself (the page never sees them) */
+  const RESERVED=new Set(["ctrl+KeyW","ctrl+KeyT","ctrl+KeyN","ctrl+KeyQ","ctrl+shift+KeyN","ctrl+shift+KeyT","ctrl+shift+KeyW","ctrl+shift+KeyQ","alt+F4","ctrl+F4"]);
+  const comboId=sc=>[sc.ctrl&&"ctrl",sc.alt&&"alt",sc.shift&&"shift",sc.code].filter(Boolean).join("+");
+  function validate(sc){
+    if(/^(Tab|Enter|NumpadEnter|Space|Backspace|Delete|Escape)$/.test(sc.code))return "Pick a letter, number or F-key.";
+    if(!sc.ctrl&&!sc.alt&&!(sc.shift&&/^F\d+$/.test(sc.code)))return "Hold Alt or Ctrl (or Shift with an F-key) while pressing the key.";
+    if(sc.ctrl&&!sc.alt&&!sc.shift)return "Ctrl + key is used by the browser and the data grid. Use Alt + key, Ctrl + Alt + key or Ctrl + Shift + key.";
+    if(RESERVED.has(comboId(sc)))return labelOf(sc)+" is reserved by the browser and cannot be used. Try another.";
+    return "";
+  }
+
+  /* ---------- changing the shortcut ---------- */
+  function startCapture(){
+    capturing=true;keyLabel.textContent="Press new keys…";keyLabel.classList.add("capturing");changeBtn.textContent="Cancel";
+    note("Hold Alt or Ctrl and press a key. Esc cancels.");
+  }
+  function stopCapture(){capturing=false;changeBtn.textContent="Change";renderLabel();}
+  changeBtn.addEventListener("click",()=>{if(capturing){stopCapture();note("");}else startCapture();input.blur();});
+  document.getElementById("opLookupReset").addEventListener("click",()=>{shortcut={...DEFAULT};storeShortcut(null);stopCapture();note("Shortcut reset to "+labelOf(shortcut)+".","ok");});
+
+  /* ---------- lookup ---------- */
   const isAdmin=()=>{try{return typeof currentUser!=="undefined"&&currentUser&&String(currentUser.role||"").toLowerCase()==="admin";}catch(_){return false;}};
   const appVisible=()=>{const app=document.getElementById("app");return !!app&&!app.classList.contains("hidden");};
   const isOpen=()=>!overlay.classList.contains("hidden");
@@ -1726,7 +1774,6 @@ document.querySelectorAll("table").forEach(table => {
     add("Status",badge);
     result.appendChild(dl);
   }
-
   async function lookup(){
     const id=input.value.trim(),mine=++reqId;
     if(!id){message("Enter an Operator ID to see details.");return;}
@@ -1743,17 +1790,28 @@ document.querySelectorAll("table").forEach(table => {
     if(!data||!data.length){message(`No operator found with ID '${id}'.`,true);return;}
     showOperator(data[0]);
   }
-
   function open(){
     if(!isAdmin()||!appVisible())return;
-    overlay.classList.remove("hidden");
+    overlay.classList.remove("hidden");note("");
     input.focus();input.select();
     if(input.value.trim())lookup();
   }
-  function close(){overlay.classList.add("hidden");clearTimeout(timer);reqId++;}
+  function close(){if(capturing)stopCapture();overlay.classList.add("hidden");clearTimeout(timer);reqId++;note("");}
+  window.openOperatorLookup=open;
 
   document.addEventListener("keydown",e=>{
-    if(e.code===SHORTCUT.code&&e.altKey===SHORTCUT.alt&&e.ctrlKey===SHORTCUT.ctrl&&e.shiftKey===SHORTCUT.shift&&!e.metaKey){
+    /* capturing a new shortcut */
+    if(capturing){
+      e.preventDefault();e.stopPropagation();
+      if(e.key==="Escape"){stopCapture();note("");return;}
+      if(/^(Control|Alt|Shift|Meta|AltGraph)$/.test(e.key))return; /* wait for the real key */
+      if(e.metaKey){note("Use Ctrl, Alt or Shift (not the Windows / Command key).","err");return;}
+      const sc={code:e.code,alt:e.altKey,ctrl:e.ctrlKey,shift:e.shiftKey},problem=validate(sc);
+      if(problem){note(problem,"err");return;}
+      shortcut=sc;storeShortcut(sc);stopCapture();note("Saved. Press "+labelOf(sc)+" anywhere in the app to open this window.","ok");
+      return;
+    }
+    if(e.code===shortcut.code&&e.altKey===shortcut.alt&&e.ctrlKey===shortcut.ctrl&&e.shiftKey===shortcut.shift&&!e.metaKey){
       if(!isAdmin()||!appVisible())return;
       e.preventDefault();
       isOpen()?close():open();
