@@ -1421,8 +1421,14 @@ def cloudflared_executable():
     found = shutil.which("cloudflared")
     if found:
         return found
-    local = os.path.join(DATA_DIR, "cloudflared.exe" if sys.platform.startswith("win") else "cloudflared")
-    return local if os.path.exists(local) else None
+    name = "cloudflared.exe" if sys.platform.startswith("win") else "cloudflared"
+    # the data folder, the folder holding this program (the release zip ships cloudflared.exe next to it), then the bundle
+    for base in (DATA_DIR, os.path.dirname(os.path.abspath(sys.executable if getattr(sys, "frozen", False) else __file__)), getattr(sys, "_MEIPASS", None)):
+        if base:
+            local = os.path.join(base, name)
+            if os.path.isfile(local):
+                return local
+    return None
 
 class Tunnel:
     """Cloudflare tunnel. Quick mode = temporary trycloudflare.com link.
@@ -1440,7 +1446,7 @@ class Tunnel:
     def start(self, port, token=None, public_url=None):
         exe = cloudflared_executable()
         if not exe:
-            raise RuntimeError("cloudflared helper not found. Install Cloudflare's 'cloudflared' (or put cloudflared.exe in " + DATA_DIR + ").")
+            raise RuntimeError("cloudflared helper not found. Put cloudflared.exe in the same folder as this program (the release zip includes it) or install Cloudflare's 'cloudflared'.")
         self.url, self.error = None, ""
         flags = 0x08000000 if sys.platform.startswith("win") else 0
         env = None
@@ -1691,9 +1697,10 @@ def server_icon_path():
     for base in (getattr(sys, "_MEIPASS", None), os.path.dirname(os.path.abspath(sys.executable)),
                  os.path.dirname(os.path.abspath(__file__)), os.getcwd()):
         if base:
-            path = os.path.join(base, "fuad's_project_server.ico")
-            if os.path.isfile(path):
-                return path
+            for icon_name in ("fuads_project_server.ico", "fuad's_project_server.ico"):
+                path = os.path.join(base, icon_name)
+                if os.path.isfile(path):
+                    return path
     return None
 
 def run_app(server, tunnel, cfg):

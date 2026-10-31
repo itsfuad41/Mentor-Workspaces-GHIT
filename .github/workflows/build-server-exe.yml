@@ -1,0 +1,95 @@
+name: Build Fuad's Server (Windows exe)
+
+on:
+  push:
+    tags:
+      - "server-v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to create or update (example: server-v1.0.0)"
+        required: true
+        default: "server-v1.0.0"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: python -m pip install --upgrade pip pyinstaller pystray pillow
+
+      - name: Build Fuads_Server.exe
+        run: >
+          pyinstaller --onefile --windowed --noconfirm
+          --name Fuads_Server
+          --icon fuads_project_server.ico
+          --add-data "fuads_project_server.ico;."
+          --hidden-import pystray._win32
+          "Fuad's_Project_Server.py"
+
+      - name: Download cloudflared (for your own Cloudflare tunnel)
+        run: Invoke-WebRequest -Uri "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" -OutFile dist\cloudflared.exe
+
+      - name: Smoke test - the built exe must start and answer /health
+        run: |
+          $env:FAAH_SERVER_DIR = Join-Path $env:RUNNER_TEMP "smoke"
+          New-Item -ItemType Directory -Force $env:FAAH_SERVER_DIR | Out-Null
+          $p = Start-Process -FilePath "dist\Fuads_Server.exe" -ArgumentList "--background-server" -PassThru
+          $ok = $false
+          for ($i = 0; $i -lt 30; $i++) {
+            Start-Sleep -Seconds 1
+            try {
+              $r = Invoke-WebRequest -Uri "http://127.0.0.1:8765/health" -UseBasicParsing -TimeoutSec 3
+              if ($r.Content -match '"status": "ok"') { $ok = $true; break }
+            } catch { }
+          }
+          New-Item -ItemType File -Force (Join-Path $env:FAAH_SERVER_DIR "background_server.stop") | Out-Null
+          Start-Sleep -Seconds 4
+          if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
+          if (-not $ok) {
+            Get-Content (Join-Path $env:FAAH_SERVER_DIR "background_server.log") -ErrorAction SilentlyContinue
+            throw "The built exe did not answer /health."
+          }
+          Write-Host "Smoke test passed."
+
+      - name: Package
+        run: |
+          New-Item -ItemType Directory -Force pkg | Out-Null
+          Copy-Item dist\Fuads_Server.exe pkg\
+          Copy-Item dist\cloudflared.exe pkg\
+          @"
+          Fuad's Server (Fuad's Project Server)
+          ======================================
+          1. Double-click Fuads_Server.exe and sign in.
+          2. Click Start Server.
+          3. Copy the Connection code into the website: Admin > PC Project Server > Server Settings.
+          4. Own Cloudflare tunnel: click "Set up my tunnel", paste your tunnel token and your https address.
+             Keep cloudflared.exe in the same folder as Fuads_Server.exe.
+          Windows may show a SmartScreen warning because the app is not code-signed:
+          click "More info" then "Run anyway".
+          "@ | Set-Content pkg\README_FIRST.txt
+          Compress-Archive -Path pkg\* -DestinationPath Fuads_Server_Windows.zip -Force
+          Copy-Item dist\Fuads_Server.exe Fuads_Server.exe
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = "Windows app for Fuad's Project Server. Download Fuads_Server_Windows.zip (includes cloudflared for your own Cloudflare tunnel), unzip it, and run Fuads_Server.exe. Fuads_Server.exe alone is the same app without cloudflared."
+          gh release view $env:RELEASE_TAG 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:RELEASE_TAG Fuads_Server_Windows.zip Fuads_Server.exe --clobber
+          } else {
+            gh release create $env:RELEASE_TAG Fuads_Server_Windows.zip Fuads_Server.exe --title "Fuad's Server $env:RELEASE_TAG" --notes $notes --target ${{ github.sha }}
+          }
