@@ -345,6 +345,9 @@ def load_config():
         ("term", 1),
         ("peers", []),
         ("custom_url", ""),
+        ("cloudflare_token", ""),
+        ("cloudflare_url", ""),
+        ("cloudflare_auto", False),
         ("auto_promote_after", 60),
         ("backup_hours", 24),
         ("backup_keep", 30),
@@ -360,9 +363,18 @@ def load_config():
     _CFG = cfg
     return cfg
 
+def public_base_url(cfg):
+    """Stable public address: Tailscale/custom URL first, else the user's own Cloudflare tunnel address."""
+    custom = str(cfg.get("custom_url") or "").strip().rstrip("/")
+    if custom:
+        return custom
+    if cfg.get("cloudflare_token") and cfg.get("cloudflare_url"):
+        return str(cfg["cloudflare_url"]).strip().rstrip("/")
+    return ""
+
 def make_code(url, view_key, admin_key):
     cfg = load_config()
-    final_url = cfg.get("custom_url") or url
+    final_url = public_base_url(cfg) or url
     raw = json.dumps({
         "u": final_url,
         "v": view_key,
@@ -906,7 +918,7 @@ def _activity_server_name(url, fallback):
     return hostname or fallback
 
 def cluster_activity_data(since, cfg):
-    local_url = str(cfg.get("custom_url") or "").rstrip("/")
+    local_url = public_base_url(cfg)
     local_name = _activity_server_name(local_url, socket.gethostname())
     local_data = ACTIVITY.get_data(since)
     items = [{**item, "server": local_name} for item in local_data["items"]]
@@ -1405,30 +1417,63 @@ def lan_addresses():
         pass
     return found or ["127.0.0.1"]
 
+def cloudflared_executable():
+    found = shutil.which("cloudflared")
+    if found:
+        return found
+    local = os.path.join(DATA_DIR, "cloudflared.exe" if sys.platform.startswith("win") else "cloudflared")
+    return local if os.path.exists(local) else None
+
 class Tunnel:
+    """Cloudflare tunnel. Quick mode = temporary trycloudflare.com link.
+    Named mode = the user's own tunnel (token from the Cloudflare dashboard) on their own address."""
     def __init__(self):
         self.proc = None
         self.url = None
+        self.named = False
+        self.error = ""
 
     @property
     def running(self):
         return self.proc is not None and self.proc.poll() is None
 
-    def start(self, port):
-        exe = shutil.which("cloudflared") or os.path.join(DATA_DIR, "cloudflared.exe" if sys.platform.startswith("win") else "cloudflared")
-        if not os.path.exists(exe) and not shutil.which("cloudflared"):
-            raise RuntimeError("cloudflared helper not found.")
-        self.url = None
+    def start(self, port, token=None, public_url=None):
+        exe = cloudflared_executable()
+        if not exe:
+            raise RuntimeError("cloudflared helper not found. Install Cloudflare's 'cloudflared' (or put cloudflared.exe in " + DATA_DIR + ").")
+        self.url, self.error = None, ""
         flags = 0x08000000 if sys.platform.startswith("win") else 0
-        self.proc = subprocess.Popen([exe, "tunnel", "--url", f"http://localhost:{port}", "--no-autoupdate"],
-                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, creationflags=flags)
-        threading.Thread(target=self._read, args=(self.proc,), daemon=True).start()
+        env = None
+        if token:
+            # named tunnel: the token goes in the environment so it never shows in the process list
+            token = str(token).strip()
+            if token.lower().startswith("cloudflared"):
+                token = token.split()[-1]  # user pasted the whole "cloudflared service install <token>" command
+            env = dict(os.environ, TUNNEL_TOKEN=token)
+            cmd = [exe, "tunnel", "--no-autoupdate", "run"]
+            self.named = True
+        else:
+            cmd = [exe, "tunnel", "--url", f"http://localhost:{port}", "--no-autoupdate"]
+            self.named = False
+        self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, creationflags=flags, env=env)
+        threading.Thread(target=self._read, args=(self.proc, public_url), daemon=True).start()
 
-    def _read(self, proc):
+    def _read(self, proc, public_url=None):
         r = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
         for line in proc.stdout:
+            if proc is not self.proc:
+                continue
+            if self.named:
+                low = line.lower()
+                if "registered tunnel connection" in low and not self.url:
+                    self.url = (public_url or "").rstrip("/") or "connected"
+                    log(f"Cloudflare tunnel connected: {self.url}")
+                elif any(k in low for k in ("unauthorized", "invalid tunnel secret", "token", "failed to unmarshal")) and ("err" in low or "fail" in low or "invalid" in low):
+                    self.error = line.strip()[-200:]
+                    log(f"Cloudflare tunnel problem: {self.error}")
+                continue
             m = r.search(line)
-            if m and proc is self.proc and not self.url:
+            if m and not self.url:
                 self.url = m.group(0)
                 log(f"Public link active: {self.url}")
 
@@ -1573,6 +1618,7 @@ def run_background_server():
     with open(BACKGROUND_LOG_PATH, "a", encoding="utf-8") as log_file:
         _BACKGROUND_LOG = log_file
         server = ServerCore()
+        cf_tunnel = Tunnel()
         funnel_active = False
         cfg = None
         try:
@@ -1590,8 +1636,17 @@ def run_background_server():
                 raise RuntimeError(f"Could not start the background server on port {port}: {error}")
 
             next_funnel_refresh = 0.0
+            next_cf_check = 0.0
             log(f"Background server started on port {port}.")
             while not os.path.exists(BACKGROUND_STOP_PATH):
+                if cfg.get("cloudflare_token") and cfg.get("cloudflare_auto") and time.monotonic() >= next_cf_check:
+                    next_cf_check = time.monotonic() + 30
+                    if not cf_tunnel.running:
+                        try:
+                            cf_tunnel.start(port, cfg["cloudflare_token"], cfg.get("cloudflare_url"))
+                            log("Starting your Cloudflare tunnel in the background.")
+                        except (OSError, RuntimeError) as error:
+                            log(f"Cloudflare tunnel could not start; will retry: {error}")
                 if time.monotonic() >= next_funnel_refresh:
                     try:
                         url = enable_tailscale_funnel(port)
@@ -1623,6 +1678,7 @@ def run_background_server():
                             log(f"Could not save the stopped Funnel state to {CONFIG_PATH}.")
                 except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
                     log(f"Could not stop Tailscale Funnel: {error}")
+            cf_tunnel.stop()
             server.stop()
             _BACKGROUND_LOG = None
     try:
@@ -1788,6 +1844,9 @@ def run_app(server, tunnel, cfg):
     v_peer_input = tk.StringVar()
     v_auto_funnel = tk.BooleanVar(value=bool(cfg.get("auto_tunnel", cfg.get("tailscale_funnel", False))))
     v_background_startup = tk.BooleanVar(value=background_startup_enabled())
+    v_cf_auto = tk.BooleanVar(value=bool(cfg.get("cloudflare_auto", False)))
+    v_cf_status = tk.StringVar()
+    cf_tunnel = Tunnel()
     tailscale_installed = tailscale_executable() is not None
     peer_box = None
 
@@ -1871,6 +1930,18 @@ def run_app(server, tunnel, cfg):
     btn_tun = tk.Button(network_card, width=26, relief="flat")
     btn_tun.pack(anchor="w", padx=6, pady=3)
 
+    tk.Label(network_card, text="My own Cloudflare tunnel (permanent address)", font=("Segoe UI", 9, "bold"),
+             bg=white, fg=navy).pack(anchor="w", padx=6, pady=(8, 0))
+    row("Cloudflare status:", v_cf_status, ("Copy address", lambda: copy(str(cfg.get("cloudflare_url") or ""))), parent=network_card)
+    cf_controls = tk.Frame(network_card, bg=white)
+    cf_controls.pack(fill="x", padx=6, pady=3)
+    btn_cf_setup = tk.Button(cf_controls, text="Set up my tunnel (token + address)", width=30, relief="flat")
+    btn_cf_setup.pack(side="left")
+    btn_cf = tk.Button(cf_controls, width=26, relief="flat")
+    btn_cf.pack(side="left", padx=6)
+    tk.Checkbutton(cf_controls, text="Start my tunnel automatically", variable=v_cf_auto,
+                   bg=white, activebackground=white).pack(side="left", padx=8)
+
     connection_card = section("Website connection")
     tk.Label(connection_card, justify="left", wraplength=850, bg=white, fg="#475569",
              text="Copy this single connection code into Website → Admin → Server settings. Keep the admin key private.").pack(anchor="w", padx=6, pady=(0, 4))
@@ -1911,6 +1982,72 @@ def run_app(server, tunnel, cfg):
             return False
         v_custom.set(url)
         return True
+
+    def edit_cloudflare():
+        dialog = tk.Toplevel(root)
+        dialog.title("My Cloudflare Tunnel")
+        dialog.transient(root)
+        dialog.grab_set()
+        tk.Label(dialog, justify="left", wraplength=520,
+                 text="In Cloudflare Zero Trust → Networks → Tunnels, open your tunnel → Public Hostname and point your address to "
+                      f"http://localhost:{server.port or cfg.get('port', DEFAULT_PORT)}. Then copy the tunnel token (the long text after 'cloudflared service install').").pack(anchor="w", padx=12, pady=(12, 6))
+        tk.Label(dialog, text="Tunnel token", font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=12)
+        token_entry = tk.Entry(dialog, width=62, show="•")
+        token_entry.pack(fill="x", padx=12, pady=(2, 6))
+        token_entry.insert(0, cfg.get("cloudflare_token", ""))
+        tk.Label(dialog, text="Public address (HTTPS), e.g. https://mentor.yourdomain.com", font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=12)
+        url_entry = tk.Entry(dialog, width=62)
+        url_entry.pack(fill="x", padx=12, pady=(2, 6))
+        url_entry.insert(0, cfg.get("cloudflare_url", ""))
+        buttons = tk.Frame(dialog)
+        buttons.pack(fill="x", padx=12, pady=10)
+        def save_cf():
+            token = token_entry.get().strip()
+            if token.lower().startswith("cloudflared"):
+                token = token.split()[-1]
+            url = url_entry.get().strip().rstrip("/")
+            if url and "://" not in url:
+                url = "https://" + url
+            if token and not url:
+                return messagebox.showerror(APP_NAME, "Enter your public address too, so users and the website know where to connect.", parent=dialog)
+            if url:
+                parsed = urllib.parse.urlparse(url)
+                if parsed.scheme != "https" or not parsed.netloc:
+                    return messagebox.showerror(APP_NAME, "The public address must be a valid HTTPS URL.", parent=dialog)
+            previous = cfg.get("cloudflare_token", ""), cfg.get("cloudflare_url", "")
+            cfg["cloudflare_token"], cfg["cloudflare_url"] = token, url
+            if not save_config(cfg):
+                cfg["cloudflare_token"], cfg["cloudflare_url"] = previous
+                return messagebox.showerror(APP_NAME, f"Could not save the Cloudflare settings to {CONFIG_PATH}.", parent=dialog)
+            if cf_tunnel.running:
+                cf_tunnel.stop()
+            dialog.destroy()
+            refresh_ui()
+        tk.Button(buttons, text="Cancel", command=dialog.destroy).pack(side="right")
+        tk.Button(buttons, text="Save", command=save_cf).pack(side="right", padx=6)
+        token_entry.focus_set()
+
+    def toggle_cf_tunnel():
+        if cf_tunnel.running:
+            cf_tunnel.stop()
+            return refresh_ui()
+        if not cfg.get("cloudflare_token"):
+            return edit_cloudflare()
+        if not server.running:
+            return messagebox.showwarning(APP_NAME, "Start the server first.")
+        try:
+            cf_tunnel.start(server.port, cfg["cloudflare_token"], cfg.get("cloudflare_url"))
+        except (OSError, RuntimeError) as error:
+            messagebox.showerror(APP_NAME, str(error))
+        refresh_ui()
+
+    def on_cf_auto(*_):
+        previous = cfg.get("cloudflare_auto", False)
+        cfg["cloudflare_auto"] = v_cf_auto.get()
+        if not save_config(cfg):
+            cfg["cloudflare_auto"] = previous
+            v_cf_auto.set(previous)
+            messagebox.showerror(APP_NAME, f"Could not save the setting to {CONFIG_PATH}.")
 
     def edit_stable_url():
         dialog = tk.Toplevel(root)
@@ -2137,10 +2274,12 @@ def run_app(server, tunnel, cfg):
             messagebox.showerror(APP_NAME, f"Could not update Windows startup settings: {error}")
 
     v_auto_funnel.trace_add("write", on_auto_funnel)
+    v_cf_auto.trace_add("write", on_cf_auto)
     v_background_startup.trace_add("write", on_background_startup)
 
     def stop_server_authorized():
         tunnel.stop()
+        cf_tunnel.stop()
         if cfg.get("tailscale_funnel"):
             try:
                 disable_tailscale_funnel()
@@ -2220,6 +2359,7 @@ def run_app(server, tunnel, cfg):
             return
         closing = True
         tunnel.stop()
+        cf_tunnel.stop()
         if cfg.get("tailscale_funnel"):
             try:
                 disable_tailscale_funnel()
@@ -2284,6 +2424,8 @@ def run_app(server, tunnel, cfg):
 
     btn_srv.configure(command=toggle_server)
     btn_tun.configure(command=toggle_tunnel)
+    btn_cf.configure(command=toggle_cf_tunnel)
+    btn_cf_setup.configure(command=edit_cloudflare)
     btn_funnel.configure(command=toggle_funnel)
 
     last_log_len = 0
@@ -2305,13 +2447,22 @@ def run_app(server, tunnel, cfg):
         v_local.set(f"http://{lan_addresses()[0]}:{p}" if running else "")
         v_public.set(tunnel.url or ("Starting..." if tunnel.running else ""))
         btn_tun.configure(text="Stop Temporary Cloudflare Link" if tunnel.running else "Start Temporary Cloudflare Link")
+        if not cfg.get("cloudflare_token"):
+            v_cf_status.set("Not set up")
+        elif cf_tunnel.running and cf_tunnel.url:
+            v_cf_status.set("Connected: " + str(cfg.get("cloudflare_url") or cf_tunnel.url))
+        elif cf_tunnel.running:
+            v_cf_status.set("Connecting…" + (f"  ({cf_tunnel.error})" if cf_tunnel.error else ""))
+        else:
+            v_cf_status.set("Stopped — " + str(cfg.get("cloudflare_url") or "no address saved"))
+        btn_cf.configure(text="Stop my Cloudflare tunnel" if cf_tunnel.running else "Start my Cloudflare tunnel")
         btn_funnel.configure(
             text="Stop Stable Funnel" if cfg.get("tailscale_funnel") else
             "Enable / Refresh Stable Funnel" if tailscale_installed else
             "Download Tailscale to Enable Funnel"
         )
         
-        base_url = v_custom.get().strip() or tunnel.url or v_local.get()
+        base_url = v_custom.get().strip() or public_base_url(cfg) or tunnel.url or v_local.get()
         v_code.set(make_code(base_url, cfg["view_key"], cfg["admin_key"]) if base_url else "")
 
         mode = cfg.get("mode", "primary").upper()
@@ -2344,6 +2495,14 @@ def run_app(server, tunnel, cfg):
     refresh_ui()
     if cfg.get("auto_tunnel"):
         root.after(800, lambda: start_funnel(show_error=False))
+    if cfg.get("cloudflare_auto") and cfg.get("cloudflare_token"):
+        def _auto_cf():
+            if server.running and not cf_tunnel.running:
+                try:
+                    cf_tunnel.start(server.port, cfg["cloudflare_token"], cfg.get("cloudflare_url"))
+                except (OSError, RuntimeError) as error:
+                    log(f"Cloudflare tunnel could not start: {error}")
+        root.after(1200, _auto_cf)
     root.protocol("WM_DELETE_WINDOW", hide_to_tray)
     root.mainloop()
 
