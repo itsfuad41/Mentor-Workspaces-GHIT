@@ -264,7 +264,7 @@
           <div class="surface"><table><thead><tr><th>Operator ID</th><th>Full Name</th><th>Mentor Name</th><th>Status</th></tr></thead><tbody id="opsBody"></tbody></table></div>
           <div class="toolbar"><button class="blue" onclick="editSelectedOperator()">Edit Selected Operator</button><button class="red" onclick="deleteSelectedOperator()">Delete Selected Operator</button></div>
         </div>
-        <div id="localView" class="hidden"><div class="surface" style="max-height:none;overflow:visible;padding:12px"><h3 style="margin:0 0 8px">Project Excel Data — Stored on your PC</h3><p style="margin:0">Projects <b>and mentors’ work</b> (part statuses, production drafts, QC lists) are stored by the <b>Fuad's Project Server</b> program on your PC. Everything a mentor does is saved there and shows up live in every other browser the same user or team opens. Keep that program running.</p></div><div class="surface" style="max-height:none;overflow:visible;padding:12px"><h3 style="margin:0 0 8px">Projects on the PC server</h3><div class="toolbar"><button class="blue" onclick="loadOnlineProjects()">🔄 Refresh List</button><button class="green" onclick="pushProjectsOnline()">⬆ Send all browser projects to PC</button><button class="amber" onclick="openPcSettings()">⚙ Server Settings</button><button class="blue" onclick="showPcConfigSql()">Setup SQL (first time)</button></div><p id="onlineMsg" style="font-weight:600"></p></div><div class="surface"><table><thead><tr><th>Project</th><th>Parts</th><th>Last saved from web</th><th>Saved by</th><th>Actions</th></tr></thead><tbody id="onlineBody"></tbody></table></div></div>
+        <div id="localView" class="hidden"><div class="surface" style="max-height:none;overflow:visible;padding:12px"><h3 style="margin:0 0 8px">Project Excel Data — Stored on your PC</h3><p style="margin:0">Projects <b>and mentors’ work</b> (part statuses, production drafts, QC lists) are stored by the <b>Fuad's Project Server</b> program on your PC. Everything a mentor does is saved there and shows up live in every other browser the same user or team opens. Keep that program running.</p></div><div class="surface" style="max-height:none;overflow:visible;padding:12px"><h3 style="margin:0 0 8px">Projects on the PC server</h3><div class="toolbar"><button class="blue" onclick="loadOnlineProjects()">🔄 Refresh List</button><button class="green" onclick="pushProjectsOnline()">⬆ Send all browser projects to PC</button><button class="amber" onclick="openPcSettings()">⚙ Server Settings</button><button class="blue" onclick="showPcConfigSql()">Setup SQL (first time)</button></div><p id="onlineMsg" style="font-weight:600"></p></div><div class="surface"><table><thead><tr><th>Project</th><th>Parts</th><th>Last saved from web</th><th>Saved by</th><th>Actions</th></tr></thead><tbody id="onlineBody"></tbody></table></div><div class="surface" style="max-height:none;overflow:visible;padding:12px"><h3 style="margin:0 0 8px">Project Excel uploads — who uploaded &amp; who is working</h3><p style="margin:0 0 8px">When a mentor uploads a project Excel it stays in their browser until you send it. Click <b>Send to all users</b> to put it on the PC server so everyone gets it live. <b>Working on it</b> lists users who saved changes to that project (green = within the last 10 minutes).</p><div class="toolbar"><button class="blue" onclick="loadUploads()">🔄 Refresh Uploads</button></div><p id="uploadsMsg" style="font-weight:600"></p></div><div class="surface"><table><thead><tr><th>Project</th><th>Uploaded by</th><th>Excel file</th><th>Uploaded at</th><th>Parts</th><th>Working on it</th><th>Status</th><th>Actions</th></tr></thead><tbody id="uploadsBody"><tr><td colspan="8">Open this tab to load uploads.</td></tr></tbody></table></div></div>
       </section>
     </main>
   </div>
@@ -1766,6 +1766,90 @@ document.querySelectorAll("table").forEach(table => {
   input.addEventListener("input",()=>{clearTimeout(timer);timer=setTimeout(lookup,400);});
   document.getElementById("opLookupClose").addEventListener("click",close);
   overlay.addEventListener("mousedown",e=>{if(e.target===overlay)close();});
+})();
+</script>
+
+<!-- ===== Admin: project Excel uploads (who uploaded / who is working / send to all users) ===== -->
+<script>
+(function(){
+  let lastUploadFileName="",uploadsCache=[];
+
+  /* remember the Excel file name the user picked */
+  const _uploadExcel=uploadExcel;
+  uploadExcel=function(event){
+    try{lastUploadFileName=(event&&event.target&&event.target.files&&event.target.files[0]&&event.target.files[0].name)||"";}catch(_){lastUploadFileName="";}
+    return _uploadExcel.apply(this,arguments);
+  };
+
+  /* every user: tell the PC server which project Excel was uploaded */
+  async function reportProjectUpload(name,fileName){
+    try{
+      if(typeof syncOn!=="function"||!syncOn())return;
+      const rows=projects[name];
+      if(!Array.isArray(rows)||!rows.length)return;
+      const live=!!(isAdminUser()&&getStamps()[name]);
+      await pcFetch("/uploads",{method:"POST",body:JSON.stringify({project_name:name,file_name:fileName||"",parts:rows,already_live:live})});
+    }catch(e){console.warn("Could not report the project upload:",e);}
+  }
+  const _autoPushProject=autoPushProject;
+  autoPushProject=async function(name){
+    const fileName=lastUploadFileName;
+    try{await _autoPushProject.apply(this,arguments);}
+    finally{reportProjectUpload(name,fileName);}
+  };
+
+  const ago=sec=>sec<60?"just now":sec<3600?Math.floor(sec/60)+" min ago":sec<86400?Math.floor(sec/3600)+" h ago":Math.floor(sec/86400)+" d ago";
+  const workingCell=list=>{
+    if(!list||!list.length)return "—";
+    return list.slice(0,6).map(a=>a.active
+      ?`<div><span style="color:#218c5a;font-weight:700">● ${esc(a.user)}</span> <span style="color:#64748b">(${a.edits} saves, ${esc(ago(a.seconds_ago))})</span></div>`
+      :`<div style="color:#64748b">${esc(a.user)} · ${esc(ago(a.seconds_ago))}</div>`).join("")+(list.length>6?`<div style="color:#64748b">+${list.length-6} more</div>`:"");
+  };
+  const statusCell=u=>u.status==="published"
+    ?`<span style="color:#218c5a;font-weight:700">Sent to all users</span><div style="color:#64748b">${esc(u.published_by||"")} · ${esc(u.published_at||"")}</div>`
+    :`<span style="color:#a66a2c;font-weight:700">Waiting</span><div style="color:#64748b">only in ${esc(u.uploaded_by||"the uploader")}'s browser</div>`;
+
+  window.loadUploads=async function(keepMsg){
+    const body=document.getElementById("uploadsBody"),msg=document.getElementById("uploadsMsg");
+    if(!body||!isAdminUser())return;
+    try{
+      const res=await pcFetch("/admin/uploads");
+      uploadsCache=res.uploads||[];
+      body.innerHTML=uploadsCache.map(u=>`<tr><td>${esc(u.project_name)}</td><td>${esc(u.uploaded_by||"—")}</td><td>${esc(u.file_name||"—")}</td><td>${esc(u.uploaded_at||"—")}</td><td>${u.part_count||0}</td><td>${workingCell(u.activity)}</td><td>${statusCell(u)}</td><td><button class="${u.status==="published"?"blue":"green"}" onclick="sendUploadToAll('${esc(u.id)}')">${u.status==="published"?"Send again":"Send to all users"}</button> <button class="red" onclick="removeUpload('${esc(u.id)}')">Remove</button></td></tr>`).join("")||'<tr><td colspan="8">No project Excel uploads recorded yet. Uploads made from now on will appear here.</td></tr>';
+      if(!keepMsg||msg.dataset.src==="load"){msg.textContent="";msg.dataset.src="";}
+    }catch(e){body.innerHTML="";msg.style.color="#bd3b3b";msg.dataset.src="load";msg.textContent=e.message||String(e);}
+  };
+
+  window.sendUploadToAll=async function(id){
+    const u=uploadsCache.find(x=>x.id===id),msg=document.getElementById("uploadsMsg");
+    if(!u)return;
+    const warn=u.on_server?`A project named '${u.project_name}' is already on the PC server. Sending will REPLACE it with ${u.uploaded_by||"the uploader"}'s version (${u.part_count} parts).\n\nContinue?`:`Send '${u.project_name}' (${u.part_count} parts, uploaded by ${u.uploaded_by||"unknown"}) to all users?`;
+    if(!confirm(warn))return;
+    try{
+      msg.dataset.src="action";msg.style.color="";msg.textContent="Sending...";
+      const r=await pcFetch("/admin/uploads/"+encodeURIComponent(id)+"/publish",{method:"POST",body:"{}"});
+      msg.style.color="#218c5a";msg.textContent=`'${r.project_name}' sent to all users (${r.part_count} parts). They receive it within a few seconds.`;
+      try{await pollState();}catch(_){}
+      loadUploads(true);
+      if(typeof loadOnlineProjects==="function")loadOnlineProjects();
+    }catch(e){msg.style.color="#bd3b3b";msg.textContent=e.message||String(e);}
+  };
+
+  window.removeUpload=async function(id){
+    const u=uploadsCache.find(x=>x.id===id);
+    if(!u||!confirm(`Remove this upload record for '${u.project_name}' (${u.uploaded_by||"unknown"})?\n\nThis does not delete the project from the PC server.`))return;
+    const msg=document.getElementById("uploadsMsg");
+    try{await pcFetch("/admin/uploads/"+encodeURIComponent(id),{method:"DELETE"});msg.dataset.src="action";msg.style.color="#218c5a";msg.textContent=`Upload record for '${u.project_name}' removed.`;loadUploads(true);}
+    catch(e){msg.dataset.src="action";msg.style.color="#bd3b3b";msg.textContent=e.message||String(e);}
+  };
+
+  /* load when the PC Project Server tab opens, then refresh every 10 s while it is visible */
+  const _showAdminView2=showAdminView;
+  showAdminView=function(id){_showAdminView2.apply(this,arguments);if(id==="localView")loadUploads();};
+  setInterval(()=>{
+    const v=document.getElementById("localView");
+    if(!document.hidden&&v&&!v.classList.contains("hidden")&&typeof isAdminUser==="function"&&typeof currentUser!=="undefined"&&currentUser&&isAdminUser())loadUploads(true);
+  },10000);
 })();
 </script>
 
