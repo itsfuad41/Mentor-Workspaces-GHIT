@@ -1348,24 +1348,27 @@ def verify_admin_login(username, password):
     base = (cfg.get("supabase_url") or DEFAULT_SUPABASE_URL).rstrip("/")
     key = cfg.get("supabase_key") or DEFAULT_SUPABASE_KEY
     try:
-        q = urllib.parse.quote(username, safe="")
         req = urllib.request.Request(
-            f"{base}/rest/v1/system_users?select=username,password,role,is_active&username=ilike.{q}&limit=5",
-            headers={"apikey": key, "Authorization": f"Bearer {key}"},
+            f"{base}/rest/v1/rpc/app_login",
+            data=json.dumps({"p_username": username, "p_password": password}).encode("utf-8"),
+            headers={"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            method="POST",
         )
         with urllib.request.urlopen(req, timeout=7) as resp:
-            rows = json.loads(resp.read().decode())
+            res = json.loads(resp.read().decode())
     except Exception:
         cached = (cfg.get("admin_cache") or {}).get(username)
         if cached and secrets.compare_digest(cached.get("hash", ""), _pw_hash(cached.get("salt", ""), username, password)):
             return True, "Signed in (offline)."
         return False, "Online user database unreachable."
-    row = next((r for r in rows if str(r.get("username", "")).strip().lower() == username), None)
-    if not row or row.get("is_active") is False:
-        return False, "Account invalid or inactive."
-    if str(row.get("password") or "").strip() != password:
-        return False, "Wrong password."
-    if str(row.get("role") or "").strip().lower() != "admin":
+    if not isinstance(res, dict) or not res.get("ok"):
+        err = (res or {}).get("error") if isinstance(res, dict) else ""
+        if err == "locked":
+            return False, "Too many wrong attempts. Try again in 10 minutes."
+        if err == "inactive":
+            return False, "Account invalid or inactive."
+        return False, "Wrong username or password."
+    if str((res.get("user") or {}).get("role") or "").strip().lower() != "admin":
         return False, "Admin role required."
     salt = secrets.token_hex(8)
     cfg.setdefault("admin_cache", {})[username] = {"salt": salt, "hash": _pw_hash(salt, username, password)}
