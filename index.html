@@ -1693,6 +1693,12 @@ document.querySelectorAll("table").forEach(table => {
 #opLookupFooter kbd{font:600 12px 'Segoe UI',sans-serif;background:#eef1f4;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:1px 7px;color:var(--navy)}
 #opLookupFooter kbd.capturing{background:#fff7e6;border-color:var(--amber);color:var(--amber)}
 #opLookupFooter button{padding:3px 10px;font-size:12px}
+#opLookupResult .ol-add{margin-top:8px}
+#opLookupResult form.ol-form{display:grid;grid-template-columns:104px 1fr;gap:7px 8px;align-items:center;margin:10px 0 0;padding-top:10px;border-top:1px dashed var(--line)}
+#opLookupResult form.ol-form label{font-weight:600;color:#475569;margin:0}
+#opLookupResult form.ol-form input,#opLookupResult form.ol-form select{width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:4px;font-size:14px}
+#opLookupResult form.ol-form .ol-actions{grid-column:1 / -1;display:flex;gap:8px;justify-content:flex-end;margin-top:2px}
+#opLookupResult .ol-ok{color:var(--green);font-weight:600;margin-bottom:8px}
 #opLookupShortMsg{margin:6px 0 0;font-size:12px;min-height:16px;color:#64748b}
 #opLookupShortMsg.err{color:var(--red)}
 #opLookupShortMsg.ok{color:var(--green)}
@@ -1779,6 +1785,57 @@ document.querySelectorAll("table").forEach(table => {
     add("Status",badge);
     result.appendChild(dl);
   }
+
+  /* ---------- not found: the admin can add this operator right here ---------- */
+  function showNotFound(id){
+    message(`No operator found with ID '${id}'.`,true);
+    const b=document.createElement("button");b.type="button";b.className="blue ol-add";b.textContent="+ Add this operator";
+    b.addEventListener("click",()=>showAddForm(id));
+    result.appendChild(document.createElement("br"));result.appendChild(b);
+  }
+  let mentorNames=null;
+  async function loadMentorNames(){
+    if(mentorNames)return mentorNames;
+    try{const{data}=await supabaseClient.from("operators").select("mentor_name").limit(5000);mentorNames=[...new Set((data||[]).map(r=>String(r.mentor_name||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));}catch(_){mentorNames=[];}
+    return mentorNames;
+  }
+  async function showAddForm(id){
+    reqId++; /* stop any running search from replacing the form */
+    result.textContent="";
+    const form=document.createElement("form");form.className="ol-form";form.autocomplete="off";
+    const field=(label,el)=>{const l=document.createElement("label");l.textContent=label;form.append(l,el);return el;};
+    const mk=(type,val)=>{const i=document.createElement("input");i.type=type;i.value=val||"";return i;};
+    const fId=field("Operator ID",mk("text",id)),fName=field("Full Name",mk("text","")),fMentor=field("Mentor Name",mk("text",""));
+    const dl=document.createElement("datalist");dl.id="opLookupMentors";fMentor.setAttribute("list",dl.id);form.appendChild(dl);
+    const sel=document.createElement("select");["Active","Inactive"].forEach(v=>{const o=document.createElement("option");o.textContent=v;sel.appendChild(o);});field("Status",sel);
+    const err=document.createElement("div");err.className="ol-msg err";err.style.gridColumn="1 / -1";err.setAttribute("role","alert");form.appendChild(err);
+    const acts=document.createElement("div");acts.className="ol-actions";
+    const cancel=document.createElement("button");cancel.type="button";cancel.textContent="Cancel";
+    const save=document.createElement("button");save.type="submit";save.className="green";save.textContent="Save operator";
+    acts.append(cancel,save);form.appendChild(acts);result.appendChild(form);
+    loadMentorNames().then(list=>{list.forEach(n=>{const o=document.createElement("option");o.value=n;dl.appendChild(o);});});
+    cancel.addEventListener("click",()=>{lookup();input.focus();});
+    form.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.tagName!=="BUTTON"){e.preventDefault();form.requestSubmit();}});
+    form.addEventListener("submit",async e=>{
+      e.preventDefault();err.textContent="";
+      const row={op_id:fId.value.trim(),full_name:fName.value.trim(),mentor_name:fMentor.value.trim(),status:sel.value};
+      if(!row.op_id||!row.full_name||!row.mentor_name){err.textContent="Operator ID, full name and mentor name are required.";return;}
+      save.disabled=true;save.textContent="Saving…";
+      try{
+        const{data:dup,error:de}=await supabaseClient.from("operators").select("op_id").ilike("op_id",row.op_id.replace(/[\\%_]/g,"\\$&")).limit(1);
+        if(de)throw de;
+        if(dup&&dup.length){err.textContent=`Operator '${dup[0].op_id}' already exists.`;save.disabled=false;save.textContent="Save operator";return;}
+        const{error}=await supabaseClient.from("operators").insert(row);
+        if(error)throw error;
+        input.value=row.op_id;
+        showOperator(row);
+        const ok=document.createElement("div");ok.className="ol-ok";ok.textContent=`Operator '${row.op_id}' added.`;result.insertBefore(ok,result.firstChild);
+        mentorNames=null;
+        try{if(typeof loadOperators==="function"&&document.getElementById("opsBody"))loadOperators();}catch(_){}
+      }catch(ex){err.textContent=ex.message||"Could not add the operator.";save.disabled=false;save.textContent="Save operator";}
+    });
+    fName.focus();
+  }
   async function lookup(){
     const id=input.value.trim(),mine=++reqId;
     if(!id){message("Enter an Operator ID to see details.");return;}
@@ -1792,7 +1849,7 @@ document.querySelectorAll("table").forEach(table => {
     }
     if(mine!==reqId)return; /* a newer search replaced this one */
     if(error){message(error.message||"Lookup failed.",true);return;}
-    if(!data||!data.length){message(`No operator found with ID '${id}'.`,true);return;}
+    if(!data||!data.length){showNotFound(id);return;}
     showOperator(data[0]);
   }
   function open(){
