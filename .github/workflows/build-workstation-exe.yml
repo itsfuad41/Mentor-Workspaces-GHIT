@@ -1,0 +1,62 @@
+name: Build Mentor Workstation (Windows app)
+
+on:
+  push:
+    tags:
+      - "v[0-9]*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to create or update (example: v2.1.0)"
+        required: true
+        default: "v2.1.0"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: python -m pip install --upgrade pip pyinstaller pywebview
+
+      - name: Build Mentor_Workstation.exe
+        run: >
+          pyinstaller --onefile --windowed --noconfirm
+          --name Mentor_Workstation
+          --icon mentor_workstation.ico
+          --add-data "index.html;."
+          --collect-all webview
+          Mentor_Workstation.py
+
+      - name: Smoke test - the built exe must start and serve the page
+        run: |
+          $env:APPDATA = Join-Path $env:RUNNER_TEMP "appdata"
+          New-Item -ItemType Directory -Force $env:APPDATA | Out-Null
+          $p = Start-Process -FilePath "dist\Mentor_Workstation.exe" -ArgumentList "--check" -PassThru -Wait
+          $f = Join-Path $env:APPDATA "MentorWorkstation\check.txt"
+          if (-not (Test-Path $f)) { throw "The built exe did not report a result." }
+          $r = Get-Content $f -Raw
+          Write-Host "Result: $r"
+          if ($r.Trim() -ne "OK") { throw "The built exe did not serve the page: $r" }
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = "Mentor Workstation for Windows. Download Mentor_Workstation.exe and double-click it. Needs Microsoft Edge WebView2 (already included in Windows 10/11). Windows may show a SmartScreen warning because the app is not code-signed: click More info, then Run anyway."
+          gh release view $env:RELEASE_TAG 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:RELEASE_TAG dist\Mentor_Workstation.exe --clobber
+          } else {
+            gh release create $env:RELEASE_TAG dist\Mentor_Workstation.exe --title "Mentor Workstation $env:RELEASE_TAG" --notes $notes --target ${{ github.sha }}
+          }
