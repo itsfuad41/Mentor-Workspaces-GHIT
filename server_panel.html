@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fuad's Server</title>
+<style>
+:root{--navy:#14283a;--navy2:#1d3a53;--blue:#1769aa;--green:#1f8a5b;--amber:#b7791f;--red:#c0392b;--bg:#eef2f6;--card:#fff;--ink:#17222d;--mut:#64748b;--line:#dbe3eb;--soft:#f4f7fa;--shadow:0 1px 2px #14283a10,0 6px 20px #14283a0d}
+@media(prefers-color-scheme:dark){:root{--bg:#0e151c;--card:#16212b;--ink:#e6edf3;--mut:#93a1ae;--line:#263441;--soft:#1b2833;--shadow:0 1px 2px #0006,0 6px 20px #0004}}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 "Segoe UI",system-ui,-apple-system,Roboto,sans-serif}
+[hidden]{display:none!important}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:1px solid var(--line);background:var(--card);padding:8px 14px;border-radius:9px;font-weight:600;transition:filter .12s,transform .05s}
+button:hover{filter:brightness(.96)}button:active{transform:translateY(1px)}button:disabled{opacity:.5;cursor:default}
+button.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+button.good{background:var(--green);border-color:var(--green);color:#fff}
+button.danger{background:var(--red);border-color:var(--red);color:#fff}
+button.ghost{background:transparent}
+button.small{padding:5px 10px;font-size:12px;border-radius:7px}
+input,select,textarea{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--card)}
+input:focus,select:focus,textarea:focus{outline:2px solid #1769aa55;border-color:var(--blue)}
+label{display:block;font-weight:600;margin:12px 0 5px}
+a{color:var(--blue)}
+.mono{font-family:ui-monospace,Consolas,monospace;font-size:12.5px}
+.mut{color:var(--mut)}.ok{color:var(--green)}.bad{color:var(--red)}.warn{color:var(--amber)}
+
+/* login */
+#login{min-height:100%;display:grid;place-items:center;background:linear-gradient(145deg,var(--navy),#0b1a27);padding:20px}
+#login form{width:min(390px,100%);background:var(--card);border-radius:16px;padding:28px;box-shadow:0 30px 80px #0006}
+#login h1{margin:0 0 4px;font-size:22px}
+#login .logo,.side .logo{width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,#2f9e6f,#1769aa);display:grid;place-items:center;color:#fff;font-weight:800;font-size:20px;margin-bottom:14px}
+#loginErr{color:var(--red);min-height:20px;margin:8px 0;font-weight:600}
+
+/* layout */
+#app{display:grid;grid-template-columns:230px 1fr;height:100%}
+.side{background:var(--navy);color:#cfe0ee;display:flex;flex-direction:column;padding:18px 12px}
+.side .logo{margin:2px 8px 8px}
+.side h2{margin:0 8px 18px;color:#fff;font-size:16px}
+.side nav{display:grid;gap:3px}
+.side nav button{display:flex;align-items:center;gap:10px;text-align:left;background:transparent;border:0;color:#b7cbdc;padding:10px 12px;border-radius:10px;font-weight:600}
+.side nav button:hover{background:#ffffff12;filter:none}
+.side nav button.on{background:#ffffff1f;color:#fff}
+.side nav .ic{width:20px;text-align:center}
+.side .foot{margin-top:auto;padding:10px 8px;font-size:12px;color:#8fa6ba}
+.side .foot button{width:100%;margin-top:8px;background:#ffffff14;border:0;color:#d8e6f2}
+main{overflow:auto;padding:22px 26px 40px}
+.top{display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+.top h1{margin:0;font-size:22px;flex:1}
+.pill{display:inline-flex;align-items:center;gap:7px;padding:4px 11px;border-radius:99px;font-size:12px;font-weight:700;background:var(--soft);border:1px solid var(--line)}
+.pill:before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor}
+.pill.ok{color:var(--green)}.pill.bad{color:var(--red)}.pill.warn{color:var(--amber)}.pill.idle{color:var(--mut)}
+.page{display:none}.page.on{display:block}
+.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:var(--shadow)}
+.card h3{margin:0 0 4px;font-size:15px;display:flex;align-items:center;gap:8px}
+.card .sub{color:var(--mut);margin:0 0 12px;font-size:13px}
+.card .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px}
+.card .row.right{justify-content:flex-end}
+.hero{display:flex;gap:18px;align-items:center;flex-wrap:wrap;background:linear-gradient(135deg,var(--navy2),var(--navy));color:#fff;border:0}
+.hero .dot{width:16px;height:16px;border-radius:50%;background:#7b8a98;box-shadow:0 0 0 6px #ffffff14}
+.hero.run .dot{background:#35d08a;box-shadow:0 0 0 6px #35d08a30}
+.hero .t{font-size:20px;font-weight:700}.hero .s{color:#b9cddd;font-size:13px}
+.hero .sp{flex:1}
+.hero button{font-size:15px;padding:11px 22px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:16px 0}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px 15px}
+.tile b{display:block;font-size:22px}.tile span{color:var(--mut);font-size:12px}
+.copybox{display:flex;gap:8px}
+.copybox textarea{resize:none;height:62px;font-family:ui-monospace,Consolas,monospace;font-size:12px;word-break:break-all}
+.notice{margin-top:10px;padding:9px 12px;border-radius:9px;font-size:13px;background:#b7791f1c;border:1px solid #b7791f55;color:var(--amber)}
+.notice.err{background:#c0392b18;border-color:#c0392b55;color:var(--red)}
+.notice.info{background:#1769aa14;border-color:#1769aa44;color:var(--blue)}
+.switch{display:flex;align-items:center;gap:10px;margin-top:10px}
+.switch input{width:auto}
+.tgl{position:relative;width:42px;height:24px;flex:none}
+.tgl input{opacity:0;width:0;height:0;position:absolute}
+.tgl i{position:absolute;inset:0;background:#9aa8b5;border-radius:99px;transition:.15s;cursor:pointer}
+.tgl i:before{content:"";position:absolute;left:3px;top:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.15s}
+.tgl input:checked+i{background:var(--green)}.tgl input:checked+i:before{transform:translateX(18px)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--mut);font-weight:700;font-size:12px;position:sticky;top:0;background:var(--card)}
+.scroll{max-height:420px;overflow:auto;border:1px solid var(--line);border-radius:10px}
+.linkrow{display:flex;gap:8px;align-items:center;padding:7px 0;border-bottom:1px dashed var(--line)}
+.linkrow:last-child{border:0}.linkrow code{flex:1;overflow-wrap:anywhere}
+#toast{position:fixed;right:18px;bottom:18px;display:grid;gap:8px;z-index:50}
+#toast div{background:var(--navy);color:#fff;padding:10px 15px;border-radius:10px;box-shadow:var(--shadow);max-width:380px;animation:in .2s}
+#toast div.bad{background:var(--red)}#toast div.good{background:var(--green)}
+@keyframes in{from{opacity:0;transform:translateY(8px)}}
+#modal{position:fixed;inset:0;background:#0a141cb0;display:grid;place-items:center;z-index:40;padding:16px}
+#modal .box{background:var(--card);border-radius:14px;padding:22px;width:min(420px,100%);box-shadow:0 30px 80px #0006}
+#modal h3{margin:0 0 6px}
+#modal .row{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+@media(max-width:820px){#app{grid-template-columns:1fr;grid-template-rows:auto 1fr}.side{flex-direction:row;overflow:auto;padding:8px}.side .logo,.side h2,.side .foot{display:none}.side nav{display:flex}main{padding:16px}}
+</style>
+</head>
+<body>
+
+<div id="login">
+  <form id="loginForm">
+    <div class="logo">F</div>
+    <h1>Fuad's Server</h1>
+    <p class="mut" style="margin:0 0 14px">Sign in with your website administrator account.</p>
+    <label for="lu">Username</label><input id="lu" autocomplete="username" required>
+    <label for="lp">Password</label><input id="lp" type="password" autocomplete="current-password" required>
+    <div id="loginErr"></div>
+    <button class="primary" style="width:100%" id="loginBtn">Sign in</button>
+  </form>
+</div>
+
+<div id="app" hidden>
+  <aside class="side">
+    <div class="logo">F</div><h2>Fuad's Server</h2>
+    <nav id="nav">
+      <button data-p="overview" class="on"><span class="ic">&#9673;</span>Overview</button>
+      <button data-p="connect"><span class="ic">&#128279;</span>Connections</button>
+      <button data-p="days"><span class="ic">&#128197;</span>Daily copies</button>
+      <button data-p="backup"><span class="ic">&#128451;</span>Backup &amp; replicas</button>
+      <button data-p="activity"><span class="ic">&#128200;</span>Activity &amp; log</button>
+      <button data-p="settings"><span class="ic">&#9881;</span>Settings</button>
+    </nav>
+    <div class="foot"><div id="who"></div><button id="signOut">Sign out</button><button id="quitBtn">Stop &amp; exit app</button></div>
+  </aside>
+
+  <main>
+    <div class="top"><h1 id="title">Overview</h1><span class="pill idle" id="topPill">connecting</span></div>
+
+    <!-- OVERVIEW -->
+    <section class="page on" id="p-overview">
+      <div class="card hero" id="hero">
+        <div class="dot"></div>
+        <div><div class="t" id="heroT">Server</div><div class="s" id="heroS"></div></div>
+        <div class="sp"></div>
+        <button id="serverBtn" class="good">Start server</button>
+      </div>
+      <div id="heroErr" class="notice err" hidden></div>
+      <div class="tiles">
+        <div class="tile"><b id="tProjects">–</b><span>Projects on this server</span></div>
+        <div class="tile"><b id="tDays">–</b><span>Days with saved copies</span></div>
+        <div class="tile"><b id="tSize">–</b><span>Database size</span></div>
+        <div class="tile"><b id="tUsers">–</b><span>People connected now</span></div>
+      </div>
+      <div class="grid">
+        <div class="card">
+          <h3>Connection code</h3>
+          <p class="sub">Paste it in the website: <b>Admin &rarr; PC Project Server &rarr; Server settings</b>, then Save &amp; Test.</p>
+          <div class="copybox"><textarea id="code" readonly></textarea><button id="copyCode" class="primary">Copy</button></div>
+          <div id="codeNote" class="notice info" hidden></div>
+        </div>
+        <div class="card">
+          <h3>Start with Windows</h3>
+          <p class="sub">Starts the server by itself when you sign in to Windows &mdash; no window, just a tray icon.</p>
+          <div class="switch"><label class="tgl"><input type="checkbox" id="swStartup"><i></i></label><b id="startupLbl">Off</b></div>
+          <div id="startupMsg" class="notice" hidden></div>
+          <div class="row"><button class="small" id="repairStartup">Repair</button><button class="small" id="openLog">Open log file</button></div>
+        </div>
+        <div class="card">
+          <h3>Temporary link <span class="pill idle" id="tmpPill">off</span></h3>
+          <p class="sub">A quick public address (Cloudflare) so people outside your network can connect. It changes every time.</p>
+          <div id="tmpUrl" class="mono" style="overflow-wrap:anywhere"></div>
+          <div id="tmpMsg" class="notice" hidden></div>
+          <div class="row"><button id="tmpBtn" class="primary">Start temporary link</button><button class="small" id="tmpCopy" hidden>Copy link</button></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CONNECTIONS -->
+    <section class="page" id="p-connect">
+      <div class="grid">
+        <div class="card">
+          <h3>Temporary link <span class="pill idle" id="c-tmpPill">off</span></h3>
+          <p class="sub">Free Cloudflare link, new address each time. Good for testing or a short session.</p>
+          <div id="c-tmpUrl" class="mono" style="overflow-wrap:anywhere"></div>
+          <div id="c-tmpMsg" class="notice" hidden></div>
+          <div class="row"><button id="c-tmpBtn" class="primary">Start temporary link</button><button class="small" id="c-tmpCopy" hidden>Copy link</button></div>
+          <div class="switch"><label class="tgl"><input type="checkbox" id="swTempAuto"><i></i></label><span>Start it automatically when the app starts</span></div>
+        </div>
+        <div class="card">
+          <h3>My Cloudflare tunnel <span class="pill idle" id="namedPill">off</span></h3>
+          <p class="sub">Your own permanent address. In Cloudflare Zero Trust &rarr; Networks &rarr; Tunnels, add a Public Hostname pointing to <span class="mono" id="namedTarget"></span>.</p>
+          <label for="cfToken">Tunnel token</label><input id="cfToken" type="password" placeholder="paste the token (or the whole 'cloudflared service install …' line)">
+          <label for="cfUrl">Public address</label><input id="cfUrl" placeholder="https://mentor.yourdomain.com">
+          <div id="namedMsg" class="notice" hidden></div>
+          <div class="row"><button id="cfSave">Save</button><button id="cfBtn" class="primary">Start tunnel</button></div>
+          <div class="switch"><label class="tgl"><input type="checkbox" id="swCfAuto"><i></i></label><span>Start it automatically</span></div>
+        </div>
+        <div class="card">
+          <h3>Tailscale Funnel <span class="pill idle" id="funPill">off</span></h3>
+          <p class="sub">A permanent https address from Tailscale. Needs the Tailscale app, signed in, with Funnel enabled.</p>
+          <div id="funMsg" class="notice" hidden></div>
+          <div class="row"><button id="funBtn" class="primary">Turn on Funnel</button><a href="https://tailscale.com/download/windows" target="_blank" id="funDl" hidden>Download Tailscale</a></div>
+          <div class="switch"><label class="tgl"><input type="checkbox" id="swFunAuto"><i></i></label><span>Keep Funnel on automatically</span></div>
+        </div>
+        <div class="card">
+          <h3>Other address</h3>
+          <p class="sub">If you already have a permanent https address for this PC, type it here. It is used in the connection code.</p>
+          <label for="customUrl">Permanent https address</label><input id="customUrl" placeholder="https://your-device.your-tailnet.ts.net">
+          <div class="row"><button id="customSave">Save address</button></div>
+          <h3 style="margin-top:20px">Addresses on this PC</h3>
+          <div id="localLinks"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- DAILY COPIES -->
+    <section class="page" id="p-days">
+      <div class="card">
+        <h3>Daily copies of every project</h3>
+        <p class="sub">The server keeps one copy of every project for every day (the last state of that day). On the website, pick a date next to the project box to open that day and download its Excel. Nothing is stored in the browser.</p>
+        <div class="row" style="margin:0 0 12px">
+          <button class="primary" id="snapNow">Save today's copy now</button>
+          <span class="mut">Keep copies for</span>
+          <select id="keepDays" style="width:auto"><option value="0">Forever</option><option value="90">90 days</option><option value="180">180 days</option><option value="365">1 year</option><option value="730">2 years</option></select>
+        </div>
+        <div class="scroll"><table><thead><tr><th>Day</th><th>Projects</th><th>Edited that day</th><th>Total parts</th></tr></thead><tbody id="daysBody"></tbody></table></div>
+      </div>
+    </section>
+
+    <!-- BACKUP -->
+    <section class="page" id="p-backup">
+      <div class="grid">
+        <div class="card">
+          <h3>Database backups</h3>
+          <p class="sub">A full backup is made automatically (about once a day, newest 30 kept).</p>
+          <div class="row" style="margin:0 0 10px"><button class="primary" id="backupNow">Back up now</button><button id="openBackups">Open backup folder</button></div>
+          <div class="scroll"><table><thead><tr><th>File</th><th>Size</th><th>Time</th></tr></thead><tbody id="backupBody"></tbody></table></div>
+        </div>
+        <div class="card">
+          <h3>Replica servers</h3>
+          <p class="sub" id="replStatus">Pair another PC so your data is copied there and it can take over.</p>
+          <label for="peerCode">Connection code of the other server</label><input id="peerCode" placeholder="FAAH1:…">
+          <div class="row"><button id="peerAdd">Add as replica</button><button id="peerBackup">Make this PC its backup</button><button id="peerPromote" class="ghost">Promote this PC to primary</button></div>
+          <div id="peers" style="margin-top:12px"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ACTIVITY -->
+    <section class="page" id="p-activity">
+      <div class="card">
+        <h3>Live activity</h3>
+        <div class="row" style="margin:0 0 10px"><input id="actFilter" placeholder="Filter by person, path or result…" style="max-width:320px"></div>
+        <div class="scroll" style="max-height:340px"><table><thead><tr><th>Time</th><th>Who</th><th>Request</th><th>Result</th></tr></thead><tbody id="actBody"></tbody></table></div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h3>Program log</h3>
+        <textarea id="logBox" readonly class="mono" style="height:220px;resize:vertical"></textarea>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section class="page" id="p-settings">
+      <div class="grid">
+        <div class="card">
+          <h3>Server port</h3>
+          <p class="sub">The website connects to this port. Changing it restarts the server and changes the connection code.</p>
+          <input id="portInput" type="number" min="1024" max="65535">
+          <div class="row"><button class="primary" id="portSave">Apply port</button></div>
+        </div>
+        <div class="card">
+          <h3>Server keys</h3>
+          <p class="sub">Creating new keys disconnects every website session until the new connection code is pasted into Admin &rarr; Server settings.</p>
+          <div class="row"><button class="danger" id="newKeys">Create new keys…</button></div>
+        </div>
+        <div class="card">
+          <h3>Where things are stored</h3>
+          <p class="sub">All project data, daily copies, keys and backups live in this folder on this PC.</p>
+          <div class="mono" id="dataDir" style="overflow-wrap:anywhere"></div>
+          <div class="row"><button id="openData">Open folder</button></div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="modal" hidden><form class="box" id="modalForm">
+  <h3 id="mTitle"></h3><p class="mut" id="mText" style="margin:0 0 6px"></p>
+  <div id="mPwWrap"><label for="mPw">Your admin password</label><input id="mPw" type="password" autocomplete="current-password"></div>
+  <div id="mErr" class="bad" style="min-height:18px;margin-top:6px;font-weight:600"></div>
+  <div class="row"><button type="button" id="mCancel">Cancel</button><button class="primary" id="mOk">Confirm</button></div>
+</form></div>
+<div id="toast"></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const S={token:"",user:"",st:null,days:[],formsFilled:false,actSince:0,act:[],page:"overview"};
+
+async function api(path,body){
+  const opt={method:body===undefined?"GET":"POST",headers:{"X-Panel":S.token}};
+  if(body!==undefined){opt.headers["Content-Type"]="application/json";opt.body=JSON.stringify(body);}
+  const r=await fetch(path,opt);let j={};try{j=await r.json();}catch{}
+  if(r.status===401&&S.token){signOut(true);throw Error("Your session ended. Please sign in again.");}
+  if(!r.ok)throw Error(j.error||("Error "+r.status));return j;
+}
+function toast(msg,kind){const d=document.createElement("div");d.textContent=msg;if(kind)d.className=kind;$("toast").appendChild(d);setTimeout(()=>d.remove(),kind==="bad"?7000:3500);}
+async function act(btn,fn,okMsg){if(btn)btn.disabled=true;try{const r=await fn();if(okMsg)toast(okMsg,"good");await refresh();return r;}catch(e){toast(e.message,"bad");}finally{if(btn)btn.disabled=false;}}
+function copy(text,what){const done=()=>toast((what||"Copied")+" copied","good");
+  if(navigator.clipboard&&window.isSecureContext)navigator.clipboard.writeText(text).then(done,()=>fb());else fb();
+  function fb(){const t=document.createElement("textarea");t.value=text;document.body.appendChild(t);t.select();try{document.execCommand("copy");done();}catch{toast("Could not copy","bad");}t.remove();}}
+function fmtBytes(n){n=Number(n)||0;if(n<1024)return n+" B";if(n<1048576)return(n/1024).toFixed(1)+" KB";return(n/1048576).toFixed(1)+" MB";}
+function fmtDur(s){s=Math.max(0,Math.floor(s||0));const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);return d?`${d}d ${h}h`:h?`${h}h ${m}m`:m?`${m}m ${s%60}s`:`${s}s`;}
+function pill(el,state,text){el.className="pill "+state;el.textContent=text;}
+function note(el,text,kind){if(!text){el.hidden=true;return;}el.hidden=false;el.className="notice"+(kind?" "+kind:"");el.textContent=text;}
+
+/* confirm with admin password */
+function ask(title,text,needPw=true){return new Promise(res=>{
+  $("mTitle").textContent=title;$("mText").textContent=text;$("mPw").value="";$("mErr").textContent="";$("mPwWrap").hidden=!needPw;$("modal").hidden=false;if(needPw)$("mPw").focus();
+  const close=v=>{$("modal").hidden=true;$("modalForm").onsubmit=null;$("mCancel").onclick=null;res(v);};
+  $("mCancel").onclick=()=>close(null);$("modalForm").onsubmit=e=>{e.preventDefault();if(needPw&&!$("mPw").value){$("mErr").textContent="Enter your password.";return;}close(needPw?$("mPw").value:true);};
+});}
+
+/* login */
+$("loginForm").onsubmit=async e=>{e.preventDefault();$("loginErr").textContent="";$("loginBtn").disabled=true;$("loginBtn").textContent="Checking…";
+  try{const r=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:$("lu").value,password:$("lp").value})});const j=await r.json();
+    if(!r.ok)throw Error(j.error||"Could not sign in.");
+    S.token=j.token;S.user=j.user;$("lp").value="";$("login").hidden=true;$("app").hidden=false;$("who").textContent="Signed in as "+j.user;S.formsFilled=false;refresh();}
+  catch(err){$("loginErr").textContent=err.message;}finally{$("loginBtn").disabled=false;$("loginBtn").textContent="Sign in";}};
+function signOut(silent){S.token="";S.st=null;$("app").hidden=true;$("login").hidden=false;if(!silent)fetch("/api/logout",{method:"POST"});$("lu").focus();}
+$("signOut").onclick=()=>signOut();
+
+/* nav */
+const TITLES={overview:"Overview",connect:"Connections",days:"Daily copies",backup:"Backup & replicas",activity:"Activity & log",settings:"Settings"};
+$("nav").onclick=e=>{const b=e.target.closest("button");if(!b)return;S.page=b.dataset.p;document.querySelectorAll("#nav button").forEach(x=>x.classList.toggle("on",x===b));
+  document.querySelectorAll(".page").forEach(p=>p.classList.toggle("on",p.id==="p-"+S.page));$("title").textContent=TITLES[S.page];refresh();};
+
+/* rendering */
+function tunnelView(t,pillEl,urlEl,msgEl,btn,copyBtn,startLabel,stopLabel){
+  const busy=t.state==="downloading"||t.state==="starting";
+  pill(pillEl,t.state==="connected"?"ok":busy?"warn":t.state==="error"?"bad":"idle",t.state==="connected"?"connected":t.state==="downloading"?"downloading helper":t.state==="starting"?"connecting":t.state==="error"?"problem":"off");
+  if(urlEl)urlEl.textContent=t.url&&t.url!=="connected"?t.url:"";
+  note(msgEl,t.state==="error"?t.error:busy?t.detail:(t.error||""),t.state==="error"?"err":"info");
+  btn.textContent=t.running?stopLabel:startLabel;btn.className=t.running?"":"primary";
+  if(copyBtn)copyBtn.hidden=!(t.url&&t.url!=="connected");
+}
+function paint(){
+  const s=S.st;if(!s)return;
+  const sv=s.server,run=sv.running;
+  $("hero").className="card hero"+(run?" run":"");
+  $("heroT").textContent=run?"Server is running":"Server is stopped";
+  $("heroS").textContent=run?`Port ${sv.port} · ${sv.mode==="replica"?"Backup replica":"Primary"} (term ${sv.term}) · up ${fmtDur(s.uptime_app)}`:"Websites cannot sync until you start it.";
+  $("serverBtn").textContent=run?"Stop server":"Start server";$("serverBtn").className=run?"danger":"good";
+  note($("heroErr"),sv.error?"The server could not start: "+sv.error:"","err");
+  pill($("topPill"),run?"ok":"bad",run?"online":"stopped");
+  $("tProjects").textContent=s.counts.projects;$("tDays").textContent=s.counts.days;$("tSize").textContent=fmtBytes(sv.db_size);$("tUsers").textContent=s.counts.clients;
+  $("code").value=s.code;
+  const lanOnly=!s.links.custom&&s.temp.state!=="connected"&&!(s.named.state==="connected"&&s.named.public_url);
+  note($("codeNote"),lanOnly?"This code points to your local network address ("+s.links.best+"). It only works for people on the same network. Turn on a link in Connections to reach it from anywhere.":"",lanOnly?"info":"");
+  // start with windows
+  const su=s.startup;$("swStartup").checked=!!su.enabled;$("swStartup").disabled=!su.supported;
+  $("startupLbl").textContent=!su.supported?"Windows only":su.enabled?"On":"Off";
+  note($("startupMsg"),!su.supported?su.problem:su.problem||(su.enabled?"":"" ),"");
+  if(su.enabled&&!su.problem){$("startupMsg").hidden=false;$("startupMsg").className="notice info";$("startupMsg").textContent="Starts "+(su.task?"through Task Scheduler and the Run list":"through the Run list")+" when you sign in.";}
+  $("repairStartup").hidden=!su.supported||!su.enabled;
+  // links
+  tunnelView(s.temp,$("tmpPill"),$("tmpUrl"),$("tmpMsg"),$("tmpBtn"),$("tmpCopy"),"Start temporary link","Stop temporary link");
+  tunnelView(s.temp,$("c-tmpPill"),$("c-tmpUrl"),$("c-tmpMsg"),$("c-tmpBtn"),$("c-tmpCopy"),"Start temporary link","Stop temporary link");
+  tunnelView(s.named,$("namedPill"),null,$("namedMsg"),$("cfBtn"),null,"Start tunnel","Stop tunnel");
+  $("namedTarget").textContent=`http://127.0.0.1:${sv.port}`;
+  const f=s.funnel;pill($("funPill"),f.active?"ok":f.error?"bad":"idle",f.active?"on":f.error?"problem":"off");
+  note($("funMsg"),!f.installed?"Tailscale is not installed on this PC.":f.error,"err");$("funDl").hidden=f.installed;
+  $("funBtn").textContent=f.active?"Turn off Funnel":"Turn on Funnel";$("funBtn").className=f.active?"":"primary";
+  $("localLinks").innerHTML=[["This PC",s.links.local],...s.links.lan.map(u=>["Local network",u]),...(s.links.custom?[["Permanent",s.links.custom]]:[])].map(([n,u])=>`<div class="linkrow"><span class="mut" style="width:96px">${esc(n)}</span><code>${esc(u)}</code><button class="small" data-copy="${esc(u)}">Copy</button></div>`).join("");
+  // daily copies
+  $("daysBody").innerHTML=S.days.map(d=>`<tr><td><b>${esc(d.day)}</b></td><td>${d.projects}</td><td>${d.edited}</td><td>${d.parts}</td></tr>`).join("")||`<tr><td colspan="4" class="mut">No copies yet. The first one is made as soon as a project exists.</td></tr>`;
+  // replicas
+  $("replStatus").textContent=s.replication.status||"";
+  $("peers").innerHTML=s.peers.map(p=>`<div class="linkrow"><span class="pill ${p.reachable?"ok":"bad"}">${p.reachable?"online":"offline"}</span><code>${esc(p.url)}</code><span class="mut">${esc(p.mode)}</span><button class="small" data-peer="${esc(p.url)}">Remove</button></div>`).join("")||`<div class="mut">No replicas yet.</div>`;
+  $("backupBody").innerHTML=(s.backups||[]).map(b=>`<tr><td class="mono">${esc(b.name)}</td><td>${fmtBytes(b.size)}</td><td>${esc(b.time)}</td></tr>`).join("")||`<tr><td colspan="3" class="mut">No backups yet.</td></tr>`;
+  $("dataDir").textContent=sv.data_dir;
+  if(!S.formsFilled){S.formsFilled=true;$("cfToken").value=s.named.token_saved?"••••••••":"";$("cfToken").dataset.saved=s.named.token_saved?"1":"";$("cfUrl").value=s.named.public_url;$("customUrl").value=s.links.custom;$("portInput").value=sv.port;$("keepDays").value=String(s.snapshot_keep_days||0);}
+  $("swTempAuto").checked=s.temp_auto;$("swCfAuto").checked=s.named.auto;$("swFunAuto").checked=s.funnel.auto;
+}
+async function refresh(){
+  if(!S.token)return;
+  try{
+    S.st=await api("/api/state");
+    if(S.page==="days"||S.page==="overview")S.days=(await api("/api/snapshots")).days||[];
+    paint();
+    if(S.page==="activity"){const a=await api("/api/activity?since="+S.actSince);if(a.items.length){S.act=[...a.items.reverse(),...S.act].slice(0,300);S.actSince=a.last;}paintAct();$("logBox").value=(await api("/api/log")).lines.join("\n");}
+  }catch(e){pill($("topPill"),"bad","panel not responding");}
+}
+function paintAct(){const f=$("actFilter").value.trim().toLowerCase();
+  $("actBody").innerHTML=S.act.filter(a=>!f||[a.who,a.method,a.path,a.detail].join(" ").toLowerCase().includes(f)).slice(0,200).map(a=>`<tr><td>${new Date(a.ts*1000).toLocaleTimeString()}</td><td>${esc(a.who)}</td><td class="mono"><b>${esc(a.method)}</b> ${esc(a.path)}</td><td class="${a.status>=400?"bad":"ok"}">${a.status}</td></tr>`).join("")||`<tr><td colspan="4" class="mut">Nothing yet.</td></tr>`;}
+$("actFilter").oninput=paintAct;
+
+/* actions */
+$("serverBtn").onclick=async e=>{const run=S.st&&S.st.server.running;
+  if(run){const pw=await ask("Stop the server?","Everyone using the website will stop syncing until you start it again.");if(pw===null)return;await act(e.target,()=>api("/api/server/stop",{password:pw}),"Server stopped");}
+  else await act(e.target,()=>api("/api/server/start",{}),"Server started");};
+const tmpToggle=e=>act(e.target,()=>api(S.st.temp.running?"/api/temp/stop":"/api/temp/start",{}));
+$("tmpBtn").onclick=tmpToggle;$("c-tmpBtn").onclick=tmpToggle;
+$("tmpCopy").onclick=$("c-tmpCopy").onclick=()=>copy(S.st.temp.url,"Link");
+$("copyCode").onclick=()=>copy(S.st.code,"Connection code");
+document.addEventListener("click",e=>{const c=e.target.closest("[data-copy]");if(c)copy(c.dataset.copy,"Address");
+  const p=e.target.closest("[data-peer]");if(p)act(p,()=>api("/api/peers/remove",{url:p.dataset.peer}),"Replica removed");});
+$("swStartup").onchange=e=>{const on=e.target.checked;act(null,async()=>{const r=await api("/api/startup",{enabled:on});if(r.note)toast(r.note);},on?"Will start with Windows":"Will not start with Windows");};
+$("repairStartup").onclick=e=>act(e.target,()=>api("/api/startup",{enabled:true}),"Start-with-Windows repaired");
+$("openLog").onclick=()=>act(null,()=>api("/api/open",{what:"log"}));
+$("openData").onclick=()=>act(null,()=>api("/api/open",{what:"data"}));
+$("openBackups").onclick=()=>act(null,()=>api("/api/open",{what:"backups"}));
+$("swTempAuto").onchange=e=>act(null,()=>api("/api/settings",{temp_link_auto:e.target.checked}));
+$("swCfAuto").onchange=e=>act(null,()=>api("/api/settings",{cloudflare_auto:e.target.checked}));
+$("swFunAuto").onchange=e=>act(null,()=>api("/api/settings",{auto_tunnel:e.target.checked}));
+$("keepDays").onchange=e=>act(null,()=>api("/api/settings",{snapshot_keep_days:+e.target.value}),"Saved");
+$("cfSave").onclick=e=>{const t=$("cfToken").value.trim();act(e.target,async()=>{await api("/api/named/save",{token:t==="••••••••"?null:t,url:$("cfUrl").value});},"Saved");};
+$("cfBtn").onclick=e=>act(e.target,()=>api(S.st.named.running?"/api/named/stop":"/api/named/start",{}));
+$("funBtn").onclick=e=>act(e.target,()=>api(S.st.funnel.active?"/api/funnel/off":"/api/funnel/on",{}),S.st&&S.st.funnel.active?"Funnel off":"Funnel on");
+$("customSave").onclick=e=>act(e.target,()=>api("/api/settings",{custom_url:$("customUrl").value}),"Address saved");
+$("snapNow").onclick=e=>act(e.target,async()=>{const r=await api("/api/snapshots/now",{});toast("Saved "+r.projects+" project copy(ies) for "+r.day,"good");});
+$("backupNow").onclick=e=>act(e.target,()=>api("/api/backups/now",{}),"Backup saved");
+$("peerAdd").onclick=e=>act(e.target,async()=>{await api("/api/peers/add",{code:$("peerCode").value});$("peerCode").value="";},"Replica added");
+$("peerBackup").onclick=async e=>{const pw=await ask("Make this PC a backup?","This PC will copy everything from the other server and stay read-only until promoted.");if(pw===null)return;
+  act(e.target,async()=>{await api("/api/peers/backup",{code:$("peerCode").value,password:pw});$("peerCode").value="";},"This PC is now a backup");};
+$("peerPromote").onclick=async e=>{const pw=await ask("Promote to primary?","This PC becomes the main server. Only do this if the other server is down.");if(pw===null)return;act(e.target,()=>api("/api/peers/promote",{password:pw}),"Promoted to primary");};
+$("portSave").onclick=e=>act(e.target,async()=>{await api("/api/server/start",{port:+$("portInput").value,restart:true});S.formsFilled=false;},"Port applied");
+$("newKeys").onclick=async e=>{const pw=await ask("Create new keys?","Every website session will be disconnected until the new connection code is pasted into Admin → Server settings.");if(pw===null)return;
+  act(e.target,()=>api("/api/keys/new",{password:pw}),"New keys created — copy the new connection code");};
+$("quitBtn").onclick=async()=>{const pw=await ask("Stop and exit the app?","The server stops, and it will not run again until you open the app (or sign in to Windows if you turned that on).");if(pw===null)return;
+  try{await api("/api/quit",{password:pw});$("app").hidden=true;document.body.innerHTML='<div style="display:grid;place-items:center;height:100%;font:16px Segoe UI"><div style="text-align:center"><h2>Fuad\'s Server has stopped.</h2><p>You can close this window.</p></div></div>';}catch(e){toast(e.message,"bad");}};
+window.openQuit=()=>$("quitBtn").click();
+setInterval(refresh,2000);
+$("lu").focus();
+</script>
+</body>
+</html>

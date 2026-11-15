@@ -27,7 +27,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install build tools
-        run: python -m pip install --upgrade pip pyinstaller pystray pillow
+        run: python -m pip install --upgrade pip pyinstaller pystray pillow pywebview
 
       - name: Build Fuads_Server.exe
         run: >
@@ -35,31 +35,32 @@ jobs:
           --name Fuads_Server
           --icon fuads_project_server.ico
           --add-data "fuads_project_server.ico;."
+          --add-data "server_panel.html;."
           --hidden-import pystray._win32
-          "Fuad's_Project_Server.py"
+          --collect-all webview
+          Fuads_Server_App.py
 
       - name: Download cloudflared (for your own Cloudflare tunnel)
         run: Invoke-WebRequest -Uri "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" -OutFile dist\cloudflared.exe
 
-      - name: Smoke test - the built exe must start and answer /health
+      - name: Smoke test - the built exe must start, serve the panel and answer /health
         run: |
           $env:FAAH_SERVER_DIR = Join-Path $env:RUNNER_TEMP "smoke"
           New-Item -ItemType Directory -Force $env:FAAH_SERVER_DIR | Out-Null
-          $p = Start-Process -FilePath "dist\Fuads_Server.exe" -ArgumentList "--background-server" -PassThru
+          $p = Start-Process -FilePath "dist\Fuads_Server.exe" -ArgumentList "--autostart","--panel-port","47820" -PassThru
           $ok = $false
-          for ($i = 0; $i -lt 30; $i++) {
+          for ($i = 0; $i -lt 40; $i++) {
             Start-Sleep -Seconds 1
             try {
-              $r = Invoke-WebRequest -Uri "http://127.0.0.1:8765/health" -UseBasicParsing -TimeoutSec 3
-              if ($r.Content -match '"status": "ok"') { $ok = $true; break }
+              $h = Invoke-WebRequest -Uri "http://127.0.0.1:8765/health" -UseBasicParsing -TimeoutSec 3
+              $a = Invoke-WebRequest -Uri "http://127.0.0.1:47820/" -UseBasicParsing -TimeoutSec 3
+              if ($h.Content -match '"status": "ok"' -and $a.Content -match "Fuad") { $ok = $true; break }
             } catch { }
           }
-          New-Item -ItemType File -Force (Join-Path $env:FAAH_SERVER_DIR "background_server.stop") | Out-Null
-          Start-Sleep -Seconds 4
           if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
           if (-not $ok) {
             Get-Content (Join-Path $env:FAAH_SERVER_DIR "background_server.log") -ErrorAction SilentlyContinue
-            throw "The built exe did not answer /health."
+            throw "The built exe did not start the server and the control panel."
           }
           Write-Host "Smoke test passed."
 
@@ -71,11 +72,13 @@ jobs:
           @"
           Fuad's Server (Fuad's Project Server)
           ======================================
-          1. Double-click Fuads_Server.exe and sign in.
-          2. Click Start Server.
-          3. Copy the Connection code into the website: Admin > PC Project Server > Server Settings.
-          4. Own Cloudflare tunnel: click "Set up my tunnel", paste your tunnel token and your https address.
-             Keep cloudflared.exe in the same folder as Fuads_Server.exe.
+          1. Double-click Fuads_Server.exe and sign in with your website admin account.
+          2. The server starts by itself. Copy the Connection code into the website:
+             Admin > PC Project Server > Server Settings.
+          3. Turn on "Start with Windows" on the Overview page: the server then starts at every sign-in, with only a tray icon.
+          4. Temporary link / own Cloudflare tunnel: see the Connections page.
+             Keep cloudflared.exe in the same folder as Fuads_Server.exe (or let the app download it).
+          5. Daily copies: every project is saved on this PC once a day; open older days from the date box on the website.
           Windows may show a SmartScreen warning because the app is not code-signed:
           click "More info" then "Run anyway".
           "@ | Set-Content pkg\README_FIRST.txt
