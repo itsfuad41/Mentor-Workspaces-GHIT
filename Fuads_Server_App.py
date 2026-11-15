@@ -186,7 +186,13 @@ class Panel:
         return {"ok": True, "note": note}
 
     def open_path(self, what):
-        target = {"log": core.BACKGROUND_LOG_PATH, "data": core.DATA_DIR, "backups": core.BACKUP_DIR}.get(what)
+        if what == "site":
+            import webbrowser
+            webbrowser.open(f"http://127.0.0.1:{self.rt.server.port or core.DEFAULT_PORT}/")
+            return {"ok": True}
+        if what == "sitefolder":
+            os.makedirs(core.WEBSITE_DIR, exist_ok=True)
+        target = {"log": core.BACKGROUND_LOG_PATH, "data": core.DATA_DIR, "backups": core.BACKUP_DIR, "sitefolder": core.WEBSITE_DIR}.get(what)
         if not target:
             raise ApiError("Unknown item.")
         if what == "backups":

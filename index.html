@@ -59,11 +59,27 @@
   .ms-all{font-weight:700}
   .ms-empty{padding:6px;color:#64748b}
   </style>
+  <style>
+  /* ===== Date box + saved-day view ===== */
+  .date-box{display:inline-flex;align-items:center;margin-right:6px}
+  .date-box input[type=date]{padding:7px 9px;min-width:138px;font-weight:600}
+  .date-box.past input[type=date]{border-color:var(--amber);background:#fff6e8}
+  .date-box.past.edit input[type=date]{border-color:var(--blue);background:#eaf3fb}
+  .hist-banner.edit{background:#eaf3fb;border-bottom-color:var(--blue);color:#14507f}
+  #histSaved{font-weight:700}
+  .hist-banner{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 14px;background:#fff6e8;border-bottom:2px solid var(--amber);color:#6b4412;font-weight:600}
+  .hist-banner #histText{flex:1;min-width:260px}
+  body.hist-mode:not(.hist-edit) button[onclick*="excelInput"]{display:none!important}
+  #systemMenu{right:auto;left:0}
+  .profile-menu button.hidden{display:none!important}
+  #systemMenu #syncBtn{display:flex;align-items:center;white-space:nowrap}
+  #systemBtn .net-dot{margin-right:6px}
+  </style>
 </head>
 <body>
   <div class="login" id="loginScreen"><form onsubmit="handleLogin(event)"><h2>Mentor Workstation By Fuad</h2><label>Username</label><input id="loginUsername" autocomplete="username" required><label>Password</label><input id="loginPassword" type="password" autocomplete="current-password" required><div id="loginError" class="error" role="alert"></div><button id="loginButton" class="green">Sign In</button></form></div>
   <div id="app" class="hidden">
-    <header><div class="actions"><span class="brand">Mentor Workstation By Fuad</span><label for="projectSelect">Project</label><select id="projectSelect" onchange="renderAll()"></select><button class="blue" onclick="openRenameProject()" title="Rename the selected project">Rename</button><button onclick="renderAll()">Refresh</button><button class="blue" onclick="openOperatorLookup()" title="Find an operator by ID">🔍 Operator</button><button class="blue" onclick="exportCurrentTabToCSV()" title="Export this tab to CSV">Export</button><button class="green" onclick="document.getElementById('excelInput').click()">Upload Excel</button><input id="excelInput" type="file" accept=".xlsx,.xls,.xlsm,.xlsb,.ods,.csv" class="hidden" multiple onchange="uploadChosenExcels(event)"><button id="syncBtn" class="blue" onclick="syncProjects(true)">☁ Sync Projects</button><button id="pcCfgBtn" class="blue hidden" onclick="openPcSettings()" title="PC server settings (admin)">⚙</button><div class="profile-wrap" id="projectMenuWrap"><button type="button" class="amber" onclick="toggleProjectMenu(event)" title="Delete a project, or all projects">Delete ▾</button><div id="projectMenu" class="profile-menu hidden" role="menu"><button type="button" role="menuitem" onclick="closeProjectMenu();deleteProject()">Delete Project</button><button type="button" role="menuitem" onclick="closeProjectMenu();deleteAllProjectExcel()">Delete All Projects</button></div></div></div><div class="profile-actions"><div class="profile-wrap"><button id="profileButton" class="profile-trigger" aria-haspopup="menu" aria-expanded="false" onclick="toggleProfileMenu(event)"><span class="profile-copy"><span id="userName" class="profile-name"></span><span id="userRole" class="profile-role"></span></span><span id="userAvatar" class="profile-avatar" aria-hidden="true"></span></button><div id="profileMenu" class="profile-menu hidden" role="menu"><button type="button" role="menuitem" onclick="closeProfileMenu();openAccountDetails()">Account Details</button><button type="button" role="menuitem" onclick="closeProfileMenu();openChangePassword()">Change Password</button></div></div><button onclick="logout()">Logout</button></div></header>
+    <header><div class="actions"><span class="brand">Mentor Workstation By Fuad</span><div class="date-box" id="dateBox" title="Pick a date to open the project exactly as saved on that day"><input type="date" id="viewDate" aria-label="Date" onchange="onViewDateChange()"></div><label for="projectSelect">Project</label><select id="projectSelect" onchange="onProjectChange()"></select><button onclick="renderAll()">Refresh</button><button class="blue" onclick="openOperatorLookup()" title="Find an operator by ID">🔍 Operator</button><button class="green" onclick="document.getElementById('excelInput').click()">Upload Excel</button><input id="excelInput" type="file" accept=".xlsx,.xls,.xlsm,.xlsb,.ods,.csv" class="hidden" multiple onchange="uploadChosenExcels(event)"><div class="profile-wrap" id="projectMenuWrap"><button type="button" class="amber" onclick="toggleProjectMenu(event)" title="Delete a project, or all projects">Delete ▾</button><div id="projectMenu" class="profile-menu hidden" role="menu"><button type="button" role="menuitem" onclick="closeProjectMenu();deleteProject()">Delete Project</button><button type="button" role="menuitem" onclick="closeProjectMenu();deleteAllProjectExcel()">Delete All Projects</button></div></div><div class="profile-wrap" id="systemMenuWrap"><button type="button" class="blue" id="systemBtn" aria-haspopup="menu" onclick="toggleSystemMenu(event)" title="Rename, export, sync and server settings"><span class="net-dot on" id="sysDot"></span>System &#9662;</button><div id="systemMenu" class="profile-menu hidden" role="menu"><button type="button" role="menuitem" onclick="closeSystemMenu();openRenameProject()" title="Rename the selected project">Rename Project</button><button type="button" role="menuitem" onclick="closeSystemMenu();downloadDayExcel()" title="Download the selected project (for the date in the date box) as an Excel file">&#11015; Export Excel (.xlsx)</button><button type="button" role="menuitem" onclick="closeSystemMenu();exportCurrentTabToCSV()" title="Export this tab to CSV">Export Tab (CSV)</button><button type="button" role="menuitem" id="syncBtn" onclick="closeSystemMenu();syncProjects(true)">☁ Sync Projects</button><button type="button" role="menuitem" id="pcCfgBtn" class="hidden" onclick="closeSystemMenu();openPcSettings()" title="PC server settings (admin)">⚙ PC Server Settings</button><button type="button" role="menuitem" id="logoutBtn" style="border-top:1px solid var(--line);color:var(--red);font-weight:700" onclick="closeSystemMenu();logout()">Logout</button></div></div></div><div class="profile-actions"><div class="profile-wrap"><button id="profileButton" class="profile-trigger" aria-haspopup="menu" aria-expanded="false" onclick="toggleProfileMenu(event)"><span class="profile-copy"><span id="userName" class="profile-name"></span><span id="userRole" class="profile-role"></span></span><span id="userAvatar" class="profile-avatar" aria-hidden="true"></span></button><div id="profileMenu" class="profile-menu hidden" role="menu"><button type="button" role="menuitem" onclick="closeProfileMenu();openAccountDetails()">Account Details</button><button type="button" role="menuitem" onclick="closeProfileMenu();openChangePassword()">Change Password</button></div></div></div></header><div id="histBanner" class="hist-banner hidden"><span id="histText"></span><button type="button" class="blue" onclick="downloadDayExcel(true)">&#11015; All projects (.xlsx)</button><button type="button" class="green" onclick="backToToday()">Back to today</button></div>
     <main>
       <nav class="tabs"><button class="tab-btn active" onclick="showTab('reports',this)">Project Reports</button><button class="tab-btn" onclick="showTab('active',this)">Active Parts</button><button class="tab-btn" onclick="showTab('series',this)">Series Summary</button><button class="tab-btn" onclick="showTab('todayOntest',this)" style="background:#fff6d8;color:#b45309;font-weight:700">Today OnTest</button><button class="tab-btn" onclick="showTab('mentor',this)">Mentor Workstation</button><button class="tab-btn" onclick="showTab('summary',this)">Mentor Summary</button><button id="qcTabButton" class="tab-btn hidden" onclick="showTab('qcws',this)">QC Workstation</button><button id="adminButton" class="tab-btn hidden" onclick="showTab('admin',this)">Admin</button></nav>
       
@@ -1477,7 +1493,7 @@ function addSubmission(){
 function deleteSubmission(id){const r=findSub(id);if(!r||!canEditRow(r))return showStatusPopup("Not Allowed","You can only delete your own submissions.");if(!confirm(`Delete this submission?\n\n${r.project_name} · ${r.work_date}\nProduction ${+r.production_count||0}, Ontest ${+r.sum_entry_count||0}\n\nThis cannot be undone.`))return;(async()=>{try{let q=supabaseClient.from("daily_production_summaries").delete().eq("id",r.id);if(!isAdminUser())q=q.eq("mentor_name",r.mentor_name);const{data,error}=await q.select("id");if(error)throw error;if(!data||!data.length)throw Error("Nothing was deleted. The server did not allow this change.");await loadCloud();showStatusPopup("Deleted","The submission was deleted.");}catch(e){showStatusPopup("Delete Failed",String(e.message||e));}})();}
 
 /* ===== Project Excel data: PC Project Server -> every user ===== */
-const PCK="MW_PC_SERVER",PCS="MW_PC_SHARED",STAMPS="MW_ONLINE_STAMPS",rdJ=k=>{try{return JSON.parse(localStorage.getItem(k)||"{}")}catch{return{}}},mkCfg=o=>{if(!o||!o.url||!o.key)return{};const urls=[...new Set(String(o.url).split(/[\s,]+/).filter(Boolean).map(u=>u.replace(/\/+$/,"")))];return{url:urls[0],urls,key:o.key};},pcCfg=()=>{const own=rdJ(PCK),sh=rdJ(PCS);return isAdminUser()&&own.url&&own.key?mkCfg(own):(sh.url&&sh.key?mkCfg(sh):{});},getStamps=()=>{try{return JSON.parse(localStorage.getItem(STAMPS)||"{}")}catch{return{}}},setStamp=(n,t)=>{const m=getStamps();m[n]=t;localStorage.setItem(STAMPS,JSON.stringify(m));},delStamp=n=>{const m=getStamps();delete m[n];localStorage.setItem(STAMPS,JSON.stringify(m));};
+const PCK="MW_PC_SERVER",PCS="MW_PC_SHARED",STAMPS="MW_ONLINE_STAMPS",SRV=()=>!!document.querySelector('meta[name="fuad-server"]'),rdJ=k=>{try{return JSON.parse(localStorage.getItem(k)||"{}")}catch{return{}}},mkCfg=o=>{if(!o||!o.key||(!o.url&&!SRV()))return{};const urls=[...new Set([...(document.querySelector('meta[name="fuad-server"]')?[location.origin]:[]),...String(o.url||"").split(/[\s,]+/).filter(Boolean).map(u=>u.replace(/\/+$/,""))])];return{url:urls[0],urls,key:o.key};},pcCfg=()=>{const own=rdJ(PCK),sh=rdJ(PCS);return isAdminUser()&&own.key&&(own.url||SRV())?mkCfg(own):(sh.key&&(sh.url||SRV())?mkCfg(sh):{});},getStamps=()=>{try{return JSON.parse(localStorage.getItem(STAMPS)||"{}")}catch{return{}}},setStamp=(n,t)=>{const m=getStamps();m[n]=t;localStorage.setItem(STAMPS,JSON.stringify(m));},delStamp=n=>{const m=getStamps();delete m[n];localStorage.setItem(STAMPS,JSON.stringify(m));};
 let pcPref=null,lastElect=0;
 const pcRaw=(base,path,opt,key)=>{let who="";try{const user=JSON.parse(sessionStorage.getItem("faah_current_user")||"null");who=user?.full_name||user?.username||"";}catch{}const clientKind=new URLSearchParams(location.search).get("client")==="desktop"||window.pywebview?"desktop":"browser";return fetch(base.replace(/\/+$/,"")+path,{...opt,headers:{"X-Key":key,"X-Client":clientKind,...(who?{"X-Who":who}:{}),...(opt.body?{"Content-Type":"application/json"}:{}),...(opt.headers||{})}});};
 async function pcElect(c){lastElect=Date.now();const rs=await Promise.all((c.urls||[c.url]).map(async(u,i)=>{try{const r=await pcRaw(u,"/ping",{},c.key);if(!r.ok)return null;const j=await r.json();return{u,i,term:+j.term||0,primary:j.mode!=="replica"};}catch{return null;}}));const ok=rs.filter(Boolean).sort((x,y)=>(y.primary-x.primary)||y.term-x.term||x.i-y.i);pcPref=ok.length?ok[0].u:null;return pcPref;}
@@ -2014,6 +2030,236 @@ document.querySelectorAll("table").forEach(table => {
     if(!document.hidden&&v&&!v.classList.contains("hidden")&&typeof isAdminUser==="function"&&typeof currentUser!=="undefined"&&currentUser&&isAdminUser())loadUploads(true);
   },10000);
 })();
+</script>
+
+<script>
+/* ===== Date box: every day's copy of every project is stored on the PC server =====
+   Older days open read-only, EXCEPT while the user's Mentor Summary for that project and day has not been submitted:
+   then the day can still be worked on (Upload Excel / edits) and is saved to that day's copy on the server. */
+(function(){
+  const H={active:false,day:"",live:null,days:[],list:[],lock:{},base:{},timer:null,saving:Promise.resolve()};
+  window.__hist=H;
+  const $=id=>document.getElementById(id),enc=encodeURIComponent,today=()=>getTodayIso();
+  const niceDay=d=>{try{const[y,m,dd]=String(d).split("-").map(Number);return new Date(y,m-1,dd).toLocaleDateString(undefined,{day:"numeric",month:"short",year:"numeric"});}catch{return d;}};
+  const clone=o=>JSON.parse(JSON.stringify(o)),frozen=rows=>{rows.forEach(r=>Object.freeze(r));return Object.freeze(rows);};
+  const COLS=["OP ID","Name","Series Number","Start Img","End Img","Dis Img","Dis Date","T Img","Entry","Status","Mentor","Comment"];
+  const toAoa=rows=>[COLS,...(rows||[]).map(p=>[p.opId,p.name,p.seriesNo,p.startImg,p.endImg,p.disImg,p.distDate||"",p.tImg,p.entry,p.status,p.mentorName,p.comment||""])];
+  const fileSafe=t=>String(t||"project").replace(/[\\/:*?"<>|]+/g,"_").trim().slice(0,60)||"project";
+  const input=()=>$("viewDate"),who=()=>(currentUser&&(currentUser.full_name||currentUser.username))||"";
+  const same=(a,b)=>String(a||"").trim().toLowerCase()===String(b||"").trim().toLowerCase();
+  const iso=d=>`${d.year}-${String(d.month).padStart(2,"0")}-${String(d.day).padStart(2,"0")}`;
+  function resetInput(){input().value=H.active?H.day:today();}
+  const editable=n=>{const l=H.lock[n];return !!l&&l.day===H.day&&l.known&&!l.submitted;};
+
+  /* Was the Mentor Summary for this project and day submitted? Mentors: their own. Admins: anyone's. Unknown (cloud unreachable) = locked. */
+  async function checkSubmitted(name,day){
+    const c=H.lock[name];if(c&&c.day===day)return c;
+    let res;
+    try{
+      if(!supabaseClient)throw Error("The cloud service is not reachable.");
+      const{data,error}=await Promise.race([supabaseClient.from("daily_production_summaries").select("mentor_name,work_date").eq("project_name",name).limit(2000),new Promise((_,rej)=>setTimeout(()=>rej(Error("The cloud service did not answer in time.")),8000))]);
+      if(error)throw error;
+      const rows=(data||[]).filter(r=>{const d=parseSummaryDate(r.work_date);return d&&iso(d)===day;});
+      const mine=isAdminUser()?rows:rows.filter(r=>same(r.mentor_name,who())||same(r.mentor_name,currentUser.username));
+      res={day,known:true,submitted:mine.length>0,count:mine.length};
+    }catch(e){res={day,known:false,submitted:true,error:e.message||String(e)};}
+    H.lock[name]=res;return res;
+  }
+
+  async function loadDays(){
+    try{
+      if(!pcCfg().url)return;
+      const j=await pcFetch("/snapshots");
+      H.days=(j.days||[]).map(d=>d.day).filter(d=>d<today()).sort();
+      input().max=today();
+      input().title=H.days.length?`${H.days.length} earlier day(s) saved, from ${niceDay(H.days[0])}`:"Earlier days will appear here as they are saved";
+    }catch{}
+  }
+
+  function setBanner(){
+    const n=$("projectSelect").value,m=(H.list||[]).find(p=>p.project_name===n),l=H.lock[n],ed=editable(n);
+    document.body.classList.toggle("hist-edit",ed);$("dateBox").classList.toggle("edit",ed);$("histBanner").classList.toggle("edit",ed);
+    const info=m?` · <span style="font-weight:500">${esc(n)}: ${m.part_count} parts${m.updated_at?", last saved "+esc((m.updated_at||"").slice(11,16)):""}${m.updated_by?" by "+esc(m.updated_by):""}${m.edited?"":" (no edits that day)"}</span>`:"";
+    let msg;
+    if(ed)msg=`&#9998; <b>${esc(niceDay(H.day))}</b> &mdash; you can still work on this day: your Mentor Summary for it is not submitted yet. Changes are saved to this day's copy on the server. <span id="histSaved"></span>`;
+    else if(l&&!l.known)msg=`&#128197; Saved copy from <b>${esc(niceDay(H.day))}</b> &mdash; read-only (the Mentor Summary status could not be checked: ${esc(l.error||"offline")})`;
+    else msg=`&#128197; Saved copy from <b>${esc(niceDay(H.day))}</b> &mdash; read-only${l?" (the Mentor Summary for this day was already submitted)":""}`;
+    $("histText").innerHTML=msg+info;
+  }
+
+  function rebuildSelect(keep){
+    const sel=$("projectSelect"),names=[...new Set([...(H.list||[]).map(p=>p.project_name),...Object.keys(projects)])];
+    sel.innerHTML=names.map(n=>{const m=H.list.find(p=>p.project_name===n);return `<option value="${esc(n)}">${esc(n)}${m&&m.deleted?" (deleted)":""}</option>`;}).join("");
+    if(keep&&names.includes(keep))sel.value=keep;
+  }
+
+  async function loadHistProject(name){
+    const[j,lock]=await Promise.all([pcFetch("/snapshots/"+enc(H.day)+"/"+enc(name)),checkSubmitted(name,H.day)]);
+    const rows=Array.isArray(j.parts)?j.parts:[];
+    H.base[name]=JSON.stringify(rows);
+    projects={...projects,[name]:(lock.known&&!lock.submitted)?clone(rows):frozen(rows)};
+    renderAll();setBanner();
+  }
+
+  /* write the edited day to the server (only for projects that are still unlocked) */
+  function persistDay(){
+    clearTimeout(H.timer);
+    H.saving=H.saving.then(async()=>{
+      if(!H.active)return;
+      for(const name of Object.keys(projects)){
+        const json=JSON.stringify(projects[name]);
+        if(json===H.base[name])continue;
+        const lock=await checkSubmitted(name,H.day);
+        if(!(lock.known&&!lock.submitted)){
+          if(H.base[name]!==undefined)projects[name]=frozen(JSON.parse(H.base[name]));else delete projects[name];
+          rebuildSelect($("projectSelect").value);renderAll();setBanner();
+          showStatusPopup("This day is locked",`Nothing was saved for '${name}': its Mentor Summary for ${niceDay(H.day)} is already submitted (or could not be checked).`);
+          continue;
+        }
+        await pcFetch("/snapshots/"+enc(H.day)+"/"+enc(name),{method:"PUT",body:JSON.stringify({parts:projects[name],updated_by:who()})});
+        H.base[name]=json;
+        let m=H.list.find(p=>p.project_name===name);
+        if(!m){m={project_name:name,deleted:false};H.list.push(m);rebuildSelect($("projectSelect").value);}
+        Object.assign(m,{part_count:projects[name].length,updated_at:new Date().toISOString().replace("T"," ").slice(0,19),updated_by:who(),edited:true});
+        setBanner();const t=$("histSaved");if(t)t.textContent="✓ Saved "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+      }
+    }).catch(e=>{showStatusPopup("Could not save this day",e.message||String(e));});
+    return H.saving;
+  }
+
+  async function showDay(day){
+    if(!pcCfg().url){resetInput();return showStatusPopup("Not available","Earlier days are kept on the PC server, which is not set up on this computer yet.");}
+    if(H.active)await persistDay();
+    input().disabled=true;
+    try{
+      const j=await pcFetch("/snapshots/"+enc(day)),list=j.projects||[];
+      if(!list.length){
+        await loadDays();
+        const near=H.days.filter(d=>d<day).slice(-1)[0],after=H.days.find(d=>d>day);
+        const hint=[near&&niceDay(near),after&&niceDay(after)].filter(Boolean).join(" or ");
+        resetInput();
+        return showStatusPopup("Nothing saved for that day",`No project copy was stored on ${niceDay(day)}.`+(hint?` Nearest saved days: ${hint}.`:""));
+      }
+      if(!H.active)H.live=projects;
+      H.active=true;H.day=day;H.list=list;H.lock={};H.base={};input().value=day;
+      const sel=$("projectSelect"),prev=sel.value;
+      projects={};rebuildSelect();
+      const pick=list.some(p=>p.project_name===prev)?prev:list[0].project_name;
+      sel.value=pick;
+      document.body.classList.add("hist-mode");$("dateBox").classList.add("past");$("histBanner").classList.remove("hidden");
+      await loadHistProject(pick);
+      const wd=$("workDate");if(wd&&editable(pick))wd.value=day;
+    }catch(e){
+      if(H.active&&!Object.keys(projects).length)window.backToToday();else resetInput();
+      showStatusPopup("Could not open that day",e.message||String(e));
+    }finally{input().disabled=false;}
+  }
+
+  window.backToToday=async function(){
+    if(H.active){
+      await persistDay();
+      projects=H.live||projects;H.active=false;H.live=null;H.list=[];H.lock={};H.base={};
+      document.body.classList.remove("hist-mode","hist-edit");$("dateBox").classList.remove("past","edit");$("histBanner").classList.add("hidden");$("histBanner").classList.remove("edit");
+      const sel=$("projectSelect"),old=sel.value;
+      sel.innerHTML=Object.keys(projects).map(k=>`<option value="${esc(k)}">${esc(k)}</option>`).join("");
+      if(old&&projects[old])sel.value=old;
+      try{renderAll();renderQC();renderTodayOntest();}catch(e){console.error(e);}
+      try{pollState();}catch{}
+    }
+    resetInput();
+  };
+
+  window.onViewDateChange=function(){
+    const d=input().value;
+    if(!d||d>=today())return window.backToToday();
+    if(H.active&&d===H.day)return;
+    showDay(d);
+  };
+
+  window.onProjectChange=async function(){
+    if(!H.active)return renderAll();
+    const n=$("projectSelect").value;
+    if(!projects[n]){
+      try{await loadHistProject(n);}catch(e){showStatusPopup("Could not open that project",e.message||String(e));}
+    }else{renderAll();setBanner();}
+  };
+
+  window.downloadDayExcel=async function(all){
+    const day=H.active?H.day:today();
+    try{
+      if(typeof XLSX==="undefined")throw Error("The Excel library could not be loaded. Check the internet connection and try again.");
+      const wb=XLSX.utils.book_new(),used=new Set();
+      const add=(name,rows)=>{
+        const base=String(name||"Project").replace(/[\\/?*\[\]:]/g," ").trim().slice(0,28)||"Project";
+        let n=base,i=2;while(used.has(n.toLowerCase()))n=base.slice(0,25)+" "+(i++);
+        used.add(n.toLowerCase());
+        XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(toAoa(rows)),n);
+      };
+      if(all===true){
+        if(H.active){for(const p of H.list){add(p.project_name,projects[p.project_name]||(await pcFetch("/snapshots/"+enc(day)+"/"+enc(p.project_name))).parts);}}
+        else Object.keys(projects).forEach(n=>add(n,projects[n]));
+        if(!used.size)throw Error("There are no projects to download.");
+        XLSX.writeFile(wb,`All_Projects_${day}.xlsx`);
+      }else{
+        const name=project();
+        if(!name)throw Error("Select a project first.");
+        add(name,parts());
+        XLSX.writeFile(wb,`${fileSafe(name)}_${day}.xlsx`);
+      }
+    }catch(e){showStatusPopup("Download failed",e.message||String(e));}
+  };
+
+  /* while an old day is open nothing reaches the live project: no sync, no live saves, no live uploads */
+  const _refreshUi=refreshUi;refreshUi=function(){return H.active?Promise.resolve():_refreshUi.apply(this,arguments);};
+  const _pollState=pollState;pollState=function(){return H.active?Promise.resolve():_pollState.apply(this,arguments);};
+  const _pushDirty=pushDirty;pushDirty=function(){return H.active?Promise.resolve():_pushDirty.apply(this,arguments);};
+  const _autoPush=autoPushProject;autoPushProject=function(){return H.active?Promise.resolve():_autoPush.apply(this,arguments);};
+  const _pushNames=pushNames;pushNames=function(){return H.active?Promise.resolve(0):_pushNames.apply(this,arguments);};
+  const _loadProjects=loadProjects;loadProjects=async function(){if(H.active){rebuildSelect($("projectSelect").value);return;}return _loadProjects.apply(this,arguments);};
+  const _save=save;save=function(){
+    if(!H.active)return _save.apply(this,arguments);
+    if(!editable($("projectSelect").value)&&!Object.keys(projects).some(n=>JSON.stringify(projects[n])!==H.base[n])){showStatusPopup("Read-only","This day is locked: its Mentor Summary was already submitted.");return;}
+    clearTimeout(H.timer);H.timer=setTimeout(persistDay,500);
+  };
+  const _submit=submitProduction;submitProduction=async function(){
+    if(H.active)await persistDay();
+    const r=await _submit.apply(this,arguments);
+    if(H.active){ /* a submitted summary locks that day: re-check and freeze */
+      H.lock={};const n=$("projectSelect").value;await checkSubmitted(n,H.day);
+      if(!editable(n)&&projects[n]&&!Object.isFrozen(projects[n])){projects[n]=frozen(clone(projects[n]));H.base[n]=JSON.stringify(projects[n]);renderAll();}
+      setBanner();
+    }
+    return r;
+  };
+  const _fetch=window.fetch.bind(window);
+  window.fetch=function(u,o){
+    if(H.active&&o&&o.method&&!/^(GET|HEAD|OPTIONS)$/i.test(o.method)){
+      const url=typeof u==="string"?u:(u&&u.url)||"";
+      if((pcCfg().urls||[]).some(b=>url.startsWith(b))&&!url.includes("/snapshots/"))return Promise.resolve(new Response(JSON.stringify({error:"Read-only saved copy"}),{status:409,headers:{"Content-Type":"application/json"}}));
+    }
+    return _fetch(u,o);
+  };
+
+  input().value=today();input().max=today();
+  input().addEventListener("focus",()=>{input().max=today();loadDays();});
+  const _enter=enterApp;enterApp=async function(){await _enter.apply(this,arguments);resetInput();loadDays();};
+  setInterval(()=>{if(!document.hidden)loadDays();},300000);
+  ["openRenameProject","deleteProject","deleteAllProjectExcel","syncProjects","openPcSettings"].forEach(n=>{
+    let orig=null;try{orig=eval(n)}catch(e){}if(typeof orig!=="function")return;
+    window[n]=async function(...a){if(H.active)await window.backToToday();return orig.apply(this,a);};
+  });
+})();
+</script>
+
+<script>
+/* ===== System menu (Rename / Export / Sync / PC server settings / Logout) ===== */
+function toggleSystemMenu(e){e&&e.stopPropagation();document.getElementById("systemMenu").classList.toggle("hidden");}
+function closeSystemMenu(){const m=document.getElementById("systemMenu");m&&m.classList.add("hidden");}
+document.addEventListener("click",e=>{if(!e.target.closest("#systemMenuWrap"))closeSystemMenu();});
+document.addEventListener("keydown",e=>{if(e.key==="Escape")closeSystemMenu();});
+(function(){const _u=updateNetBadge;updateNetBadge=function(){_u.apply(this,arguments);const b=document.getElementById("syncBtn"),d=document.getElementById("sysDot");
+  if(b&&d){const off=!navigator.onLine||liveState==="offline",busy=!off&&liveState==="saving";d.className="net-dot "+(off?"off":"on");d.title=off?"Offline":"Online";
+    b.innerHTML=`<span class="net-dot ${off?"off":"on"}"></span>☁ Sync Projects <span style="margin-left:auto;padding-left:14px;font-size:12px;color:${off?"#dc2626":"#16a34a"};font-weight:700">${off?"Offline":busy?"Saving…":"Online ✓"}</span>`;}};try{updateNetBadge();}catch{}})();
 </script>
 
 </body>

@@ -36,6 +36,7 @@ jobs:
           --icon fuads_project_server.ico
           --add-data "fuads_project_server.ico;."
           --add-data "server_panel.html;."
+          --add-data "index.html;."
           --hidden-import pystray._win32
           --collect-all webview
           Fuads_Server_App.py

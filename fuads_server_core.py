@@ -1294,8 +1294,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.end_headers()
                 return self.wfile.write(b)
 
-            if path == "/" and method == "GET":
-                return self._send(200, None, raw=f"{APP_NAME} cluster running.".encode())
+            if path in ("/", "/index.html", "/app") and method == "GET":
+                page = website_html()
+                if page is None:
+                    return self._send(200, None, raw=f"{APP_NAME} cluster running. (No website file found: put index.html in {WEBSITE_DIR})".encode())
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(page)))
+                self.send_header("Cache-Control", "no-cache")
+                self.end_headers()
+                return self.wfile.write(page)
 
             if path in ("", "/health") and method == "GET":
                 return self._send(200, {"status": "ok", "mode": cfg.get("mode", "primary"), "term": cfg.get("term", 1), "time": datetime.now().isoformat()})
@@ -1682,6 +1690,42 @@ IS_WINDOWS = sys.platform.startswith("win")
 
 def _no_window_flags():
     return 0x08000000 if IS_WINDOWS else 0  # CREATE_NO_WINDOW
+
+# ---- The website itself (index.html) is served by this server, so any address of the server opens the site ----
+WEBSITE_DIR = os.path.join(DATA_DIR, "website")
+
+def website_path():
+    """Newest-first search: a copy dropped in the data folder (updatable without a new build), then next to the
+    program, then the copy bundled inside the exe."""
+    here = os.path.dirname(os.path.abspath(sys.executable if getattr(sys, "frozen", False) else __file__))
+    for base in (WEBSITE_DIR, here, getattr(sys, "_MEIPASS", None)):
+        if base:
+            candidate = os.path.join(base, "index.html")
+            if os.path.isfile(candidate):
+                return candidate
+    return None
+
+def website_html():
+    """The page as bytes, marked so it knows this server delivered it. None if there is no website file."""
+    path = website_path()
+    if not path:
+        return None
+    try:
+        with open(path, "rb") as fh:
+            data = fh.read()
+    except OSError:
+        return None
+    marker = b'<meta name="fuad-server" content="1">'
+    i = data.lower().find(b"<head>")
+    return data[:i + 6] + marker + data[i + 6:] if i >= 0 else marker + data
+
+def website_info():
+    path = website_path()
+    if not path:
+        return {"available": False, "folder": WEBSITE_DIR}
+    st = os.stat(path)
+    return {"available": True, "path": path, "folder": WEBSITE_DIR, "size": st.st_size,
+            "modified": time.strftime("%Y-%m-%d %H:%M", time.localtime(st.st_mtime)), "custom": path.startswith(WEBSITE_DIR)}
 
 def cloudflared_executable():
     found = shutil.which("cloudflared")
@@ -2295,4 +2339,5 @@ class Runtime:
                        "mode": REPLICATOR.peer_states.get(p["url"].rstrip("/"), {}).get("mode", "?")} for p in cfg.get("peers", [])],
             "replication": {"status": REPLICATOR.status, "in_sync": REPLICATOR.in_sync},
             "snapshot_keep_days": int(cfg.get("snapshot_keep_days") or 0),
+            "site": website_info(),
         }

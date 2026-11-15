@@ -157,6 +157,13 @@ th{color:var(--mut);font-weight:700;font-size:12px;position:sticky;top:0;backgro
           <div class="row"><button class="small" id="repairStartup">Repair</button><button class="small" id="openLog">Open log file</button></div>
         </div>
         <div class="card">
+          <h3>Website <span class="pill idle" id="sitePill">-</span></h3>
+          <p class="sub">The Mentor Workstation website is served by this server. Anyone who opens one of these addresses gets the site &mdash; no separate hosting.</p>
+          <div id="siteLinks"></div>
+          <div id="siteMsg" class="notice" hidden></div>
+          <div class="row"><button class="primary" id="siteOpen">Open website</button><button class="small" id="siteFolder">Update website file…</button></div>
+        </div>
+        <div class="card">
           <h3>Temporary link <span class="pill idle" id="tmpPill">off</span></h3>
           <p class="sub">A quick public address (Cloudflare) so people outside your network can connect. It changes every time.</p>
           <div id="tmpUrl" class="mono" style="overflow-wrap:anywhere"></div>
@@ -354,6 +361,12 @@ function paint(){
   note($("startupMsg"),!su.supported?su.problem:su.problem||(su.enabled?"":"" ),"");
   if(su.enabled&&!su.problem){$("startupMsg").hidden=false;$("startupMsg").className="notice info";$("startupMsg").textContent="Starts "+(su.task?"through Task Scheduler and the Run list":"through the Run list")+" when you sign in.";}
   $("repairStartup").hidden=!su.supported||!su.enabled;
+  // website
+  const site=s.site;pill($("sitePill"),site.available&&run?"ok":"bad",!site.available?"no file":run?"served":"server stopped");
+  const addrs=[...(s.temp.state==="connected"&&s.temp.url?[["Temporary link",s.temp.url]]:[]),...(s.named.state==="connected"&&s.named.public_url?[["My tunnel",s.named.public_url]]:[]),...(s.links.custom?[["Permanent",s.links.custom]]:[]),...s.links.lan.map(u=>["Local network",u]),["This PC",s.links.local]];
+  $("siteLinks").innerHTML=site.available?addrs.map(([n,u])=>`<div class="linkrow"><span class="mut" style="width:104px">${esc(n)}</span><code>${esc(u)}/</code><button class="small" data-copy="${esc(u)}/">Copy</button></div>`).join(""):"";
+  note($("siteMsg"),site.available?`Website file: ${site.custom?"your copy in the data folder":"the one that came with the app"} · ${fmtBytes(site.size)} · updated ${site.modified}`:"No index.html found. Click 'Update website file…' and put your index.html in the folder that opens.",site.available?"info":"err");
+  $("siteOpen").disabled=!site.available||!run;
   // links
   tunnelView(s.temp,$("tmpPill"),$("tmpUrl"),$("tmpMsg"),$("tmpBtn"),$("tmpCopy"),"Start temporary link","Stop temporary link");
   tunnelView(s.temp,$("c-tmpPill"),$("c-tmpUrl"),$("c-tmpMsg"),$("c-tmpBtn"),$("c-tmpCopy"),"Start temporary link","Stop temporary link");
@@ -398,6 +411,8 @@ document.addEventListener("click",e=>{const c=e.target.closest("[data-copy]");if
   const p=e.target.closest("[data-peer]");if(p)act(p,()=>api("/api/peers/remove",{url:p.dataset.peer}),"Replica removed");});
 $("swStartup").onchange=e=>{const on=e.target.checked;act(null,async()=>{const r=await api("/api/startup",{enabled:on});if(r.note)toast(r.note);},on?"Will start with Windows":"Will not start with Windows");};
 $("repairStartup").onclick=e=>act(e.target,()=>api("/api/startup",{enabled:true}),"Start-with-Windows repaired");
+$("siteOpen").onclick=()=>act(null,()=>api("/api/open",{what:"site"}));
+$("siteFolder").onclick=()=>act(null,()=>api("/api/open",{what:"sitefolder"}));
 $("openLog").onclick=()=>act(null,()=>api("/api/open",{what:"log"}));
 $("openData").onclick=()=>act(null,()=>api("/api/open",{what:"data"}));
 $("openBackups").onclick=()=>act(null,()=>api("/api/open",{what:"backups"}));
