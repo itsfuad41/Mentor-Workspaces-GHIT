@@ -126,6 +126,7 @@ th{color:var(--mut);font-weight:700;font-size:12px;position:sticky;top:0;backgro
   </aside>
 
   <main>
+    <div id="updBanner" class="notice info" hidden style="margin:0 0 12px;display:flex;gap:12px;align-items:center"><span id="updBannerText" style="flex:1"></span><button class="primary small" id="updBannerBtn">Update now</button></div>
     <div class="top"><h1 id="title">Overview</h1><span class="pill idle" id="topPill">connecting</span></div>
 
     <!-- OVERVIEW -->
@@ -272,6 +273,14 @@ th{color:var(--mut);font-weight:700;font-size:12px;position:sticky;top:0;backgro
     <section class="page" id="p-settings">
       <div class="grid">
         <div class="card">
+          <h3>App updates <span class="pill idle" id="updPill">-</span></h3>
+          <p class="sub">The app can update itself from the project's GitHub releases, so you never have to open the website and download it again.</p>
+          <div id="updInfo" class="notice info"></div>
+          <div id="updBar" hidden style="height:8px;border-radius:6px;background:var(--line,#dfe6ee);overflow:hidden;margin:8px 0"><div id="updBarFill" style="height:100%;width:0;background:#2e7d32;transition:width .3s"></div></div>
+          <div class="switch" style="margin:10px 0"><label class="tgl"><input type="checkbox" id="swAuto"><i></i></label><span><b>Update automatically.</b> Installs a new version by itself once nobody has saved anything for 3 minutes.</span></div>
+          <div class="row"><button id="updCheck">Check for updates</button><button class="primary" id="updInstall" disabled>Update now</button></div>
+        </div>
+        <div class="card">
           <h3>Server port</h3>
           <p class="sub">The website connects to this port. Changing it restarts the server and changes the connection code.</p>
           <input id="portInput" type="number" min="1024" max="65535">
@@ -382,6 +391,16 @@ function paint(){
   note($("startupMsg"),!su.supported?su.problem:su.problem||(su.enabled?"":"" ),"");
   if(su.enabled&&!su.problem){$("startupMsg").hidden=false;$("startupMsg").className="notice info";$("startupMsg").textContent="Starts "+(su.task?"through Task Scheduler and the Run list":"through the Run list")+" when you sign in.";}
   $("repairStartup").hidden=!su.supported||!su.enabled;
+  // updates
+  const up=s.update||{};const hasNew=!!up.available;
+  $("updBanner").hidden=!(hasNew&&up.supported);$("updBanner").style.display=hasNew&&up.supported?"flex":"none";
+  $("updBannerText").textContent=hasNew?`Version ${up.latest.version} is available (you have ${up.current}).${up.auto?" It installs by itself when nobody is saving.":""}`:"";
+  pill($("updPill"),hasNew?"warn":"ok",hasNew?"update ready":"up to date");
+  $("updInfo").className="notice "+(up.error?"err":"info");
+  $("updInfo").textContent=!up.supported?`Version ${up.current}. Self-update works in the installed Fuads_Server.exe (this copy runs from source).`:up.busy==="downloading"?`Downloading version ${up.latest?up.latest.version:""}… ${Math.round((up.progress||0)*100)}%`:up.busy==="installing"?"Installing… the app restarts in a moment.":up.error||(hasNew?`Version ${up.current} installed. New version ${up.latest.version} (${up.latest.published}) is ready.`:`Version ${up.current} installed. `+(up.checked_at?"You have the newest version.":"Not checked yet."));
+  $("updBar").hidden=up.busy!=="downloading";$("updBarFill").style.width=Math.round((up.progress||0)*100)+"%";
+  $("updInstall").disabled=!(hasNew&&up.supported)||!!up.busy;$("updCheck").disabled=!!up.busy||!up.supported;$("updBannerBtn").disabled=!!up.busy;
+  if(!S.autoFilled){S.autoFilled=true;$("swAuto").checked=up.auto!==false;}
   // website
   const site=s.site;pill($("sitePill"),site.available&&run?"ok":"bad",!site.available?"no file":run?"served":"server stopped");
   const addrs=[...(s.temp.state==="connected"&&s.temp.url?[["Temporary link",s.temp.url]]:[]),...(s.named.state==="connected"&&s.named.public_url?[["My tunnel",s.named.public_url]]:[]),...(s.links.custom?[["Permanent",s.links.custom]]:[]),...s.links.lan.map(u=>["Local network",u]),["This PC",s.links.local]];
@@ -442,6 +461,10 @@ $("openBackups").onclick=()=>act(null,()=>api("/api/open",{what:"backups"}));
 $("swTempAuto").onchange=e=>act(null,()=>api("/api/settings",{temp_link_auto:e.target.checked}));
 $("swCfAuto").onchange=e=>act(null,()=>api("/api/settings",{cloudflare_auto:e.target.checked}));
 $("swFunAuto").onchange=e=>act(null,()=>api("/api/settings",{auto_tunnel:e.target.checked}));
+const doInstall=()=>{if(confirm("Install the update now? The server restarts for a few seconds."))act(null,()=>api("/api/update/install",{}),"Updating…");};
+$("updInstall").onclick=doInstall;$("updBannerBtn").onclick=doInstall;
+$("updCheck").onclick=()=>act(null,()=>api("/api/update/check",{}),"Checked");
+$("swAuto").onchange=e=>act(null,()=>api("/api/settings",{auto_update:e.target.checked}),"Saved");
 $("swFresh").onchange=e=>act(null,()=>api("/api/settings",{daily_fresh_start:e.target.checked}),"Saved");
 $("keepDays").onchange=e=>act(null,()=>api("/api/settings",{snapshot_keep_days:+e.target.value}),"Saved");
 $("cfSave").onclick=e=>{const t=$("cfToken").value.trim();act(e.target,async()=>{await api("/api/named/save",{token:t==="••••••••"?null:t,url:$("cfUrl").value});},"Saved");};

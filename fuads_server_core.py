@@ -38,6 +38,7 @@ from collections import deque
 from datetime import datetime, timedelta
 
 APP_NAME = "Fuad's Project Server"
+APP_VERSION = "3.0.4"   # the release workflow rewrites this line from the release tag
 DEFAULT_PORT = 8765
 MAX_BODY = 200 * 1024 * 1024  # 200 MB
 DEFAULT_SUPABASE_URL = "https://xupzriltfvznmaelixft.supabase.co"
@@ -139,6 +140,7 @@ def load_config():
         ("temp_link_auto", False),
         ("snapshot_keep_days", 0),
         ("daily_fresh_start", True),
+        ("auto_update", True),
         ("rollover_day", ""),
         ("auto_promote_after", 60),
         ("backup_hours", 24),
@@ -2460,5 +2462,6 @@ class Runtime:
             "replication": {"status": REPLICATOR.status, "in_sync": REPLICATOR.in_sync},
             "snapshot_keep_days": int(cfg.get("snapshot_keep_days") or 0),
             "daily_fresh_start": bool(cfg.get("daily_fresh_start", True)),
+            "version": APP_VERSION,
             "site": website_info(),
         }

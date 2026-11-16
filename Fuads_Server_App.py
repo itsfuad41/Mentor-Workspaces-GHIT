@@ -60,6 +60,13 @@ class Panel:
         self.on_quit = lambda: None
         self.started = time.time()
         self.httpd = None
+        import fuads_updater
+
+        def last_write():
+            with core.ACTIVITY.lock:
+                return max((i["ts"] for i in core.ACTIVITY.items if i["method"] in ("PUT", "POST", "PATCH", "DELETE")), default=0)
+
+        self.updater = fuads_updater.Updater(core.APP_VERSION, core.load_config, core.save_config, last_write, lambda: self.on_quit(), log=core.log)
 
     # ---- auth ----
     def login(self, username, password):
@@ -109,6 +116,7 @@ class Panel:
         s["startup"] = core.startup_status()
         s["backups"] = self.backups()
         s["uptime_app"] = int(time.time() - self.started)
+        s["update"] = self.updater.status()
         return s
 
     # ---- actions (each returns a JSON-able dict, or raises ApiError) ----
@@ -178,6 +186,8 @@ class Panel:
             cfg["code_url"] = url
             core.save_config(cfg)
             self.rt._check_links()
+        if "auto_update" in body:
+            cfg["auto_update"] = bool(body["auto_update"])
         if "daily_fresh_start" in body:
             cfg["daily_fresh_start"] = bool(body["daily_fresh_start"])
         if "snapshot_keep_days" in body:
@@ -359,6 +369,8 @@ def make_handler(panel):
                     "/api/peers/backup": lambda: panel.peers_backup(token, b),
                     "/api/peers/promote": lambda: panel.peers_promote(token, b),
                     "/api/keys/new": lambda: panel.keys_new(token, b),
+                    "/api/update/check": lambda: panel.updater.check(),
+                    "/api/update/install": lambda: panel.updater.install(),
                 }
                 if path == "/api/quit":
                     panel.confirm_password(token, b.get("password"))
@@ -426,6 +438,21 @@ def main(argv=None):
     port_hint = None
     if "--panel-port" in argv:
         port_hint = int(argv[argv.index("--panel-port") + 1])
+
+    if "--after-update" in argv:      # an update just replaced the exe: wait (up to 25s) until the old copy has fully closed
+        time.sleep(1.5)
+        for _ in range(24):
+            try:
+                with urllib.request.urlopen(f"http://127.0.0.1:{port_hint or PANEL_PORTS[0]}/api/ping", timeout=1):
+                    pass
+            except (OSError, ValueError):
+                break
+            time.sleep(1)
+    try:
+        import fuads_updater
+        fuads_updater.cleanup_old()
+    except Exception:  # noqa: BLE001
+        pass
 
     if another_copy_running(port_hint):
         return 0  # already running: it has been asked to show its window
@@ -500,6 +527,7 @@ def main(argv=None):
             httpd.shutdown()
 
     panel.on_show, panel.on_quit = show, quit_all
+    panel.updater.start()
 
     # tray icon (optional: the app still works without it)
     try:

@@ -26,14 +26,27 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install build tools
-        run: python -m pip install --upgrade pip pyinstaller pystray pillow pywebview
+      - name: Install build tools (PyInstaller bootloader compiled from source)
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip pystray pillow pywebview
+          # The stock PyInstaller bootloader is the most common reason for antivirus false alarms: build our own.
+          python -m pip install --no-binary pyinstaller pyinstaller
+          if ($LASTEXITCODE -ne 0) {
+            Write-Warning "Could not compile the bootloader; using the prebuilt PyInstaller."
+            python -m pip install pyinstaller
+          }
+
+      - name: Stamp version and write exe version info
+        run: python .github/prepare_build.py
 
       - name: Build Fuads_Server.exe
         run: >
           pyinstaller --onefile --windowed --noconfirm
           --name Fuads_Server
           --icon fuads_project_server.ico
+          --version-file version_info.txt
+          --noupx
           --add-data "fuads_project_server.ico;."
           --add-data "server_panel.html;."
           --add-data "index.html;."
@@ -85,15 +98,18 @@ jobs:
           "@ | Set-Content pkg\README_FIRST.txt
           Compress-Archive -Path pkg\* -DestinationPath Fuads_Server_Windows.zip -Force
           Copy-Item dist\Fuads_Server.exe Fuads_Server.exe
+          $hash = (Get-FileHash Fuads_Server.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  Fuads_Server.exe" | Set-Content SHA256SUMS.txt -Encoding ascii
+          "SHA256_EXE=$hash" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $notes = "Windows app for Fuad's Project Server. Download Fuads_Server_Windows.zip (includes cloudflared for your own Cloudflare tunnel), unzip it, and run Fuads_Server.exe. Fuads_Server.exe alone is the same app without cloudflared."
+          $notes = "Windows app for Fuad's Project Server. Download Fuads_Server_Windows.zip (includes cloudflared for your own Cloudflare tunnel), unzip it, and run Fuads_Server.exe. Fuads_Server.exe alone is the same app without cloudflared. Installed copies update themselves from here.`n`nSHA-256 of Fuads_Server.exe: $env:SHA256_EXE`n`nIf your antivirus flags the file it is a false alarm (the app is open source and not code-signed): you can report it at https://www.microsoft.com/en-us/wdsi/filesubmission and send the hash above."
           gh release view $env:RELEASE_TAG 2>$null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload $env:RELEASE_TAG Fuads_Server_Windows.zip Fuads_Server.exe --clobber
+            gh release upload $env:RELEASE_TAG Fuads_Server_Windows.zip Fuads_Server.exe SHA256SUMS.txt --clobber
           } else {
-            gh release create $env:RELEASE_TAG Fuads_Server_Windows.zip Fuads_Server.exe --title "Fuad's Server $env:RELEASE_TAG" --notes $notes --target ${{ github.sha }}
+            gh release create $env:RELEASE_TAG Fuads_Server_Windows.zip Fuads_Server.exe SHA256SUMS.txt --title "Fuad's Server $env:RELEASE_TAG" --notes $notes --target ${{ github.sha }}
           }
