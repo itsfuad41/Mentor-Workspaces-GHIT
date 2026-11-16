@@ -148,6 +148,8 @@ th{color:var(--mut);font-weight:700;font-size:12px;position:sticky;top:0;backgro
           <p class="sub">Paste it in the website: <b>Admin &rarr; PC Project Server &rarr; Server settings</b>, then Save &amp; Test.</p>
           <div class="copybox"><textarea id="code" readonly></textarea><button id="copyCode" class="primary">Copy</button></div>
           <div id="codeNote" class="notice info" hidden></div>
+          <label for="codeUrl">Live link for the code <span class="mut">(optional &mdash; paste one to force it)</span></label>
+          <div class="copybox"><input id="codeUrl" placeholder="https://your-live-link.trycloudflare.com"><button id="codeUrlSave" class="small">Use this</button><button id="codeUrlClear" class="small">Auto</button></div>
         </div>
         <div class="card">
           <h3>Start with Windows</h3>
@@ -353,8 +355,14 @@ function paint(){
   pill($("topPill"),run?"ok":"bad",run?"online":"stopped");
   $("tProjects").textContent=s.counts.projects;$("tDays").textContent=s.counts.days;$("tSize").textContent=fmtBytes(sv.db_size);$("tUsers").textContent=s.counts.clients;
   $("code").value=s.code;
-  const lanOnly=!s.links.custom&&s.temp.state!=="connected"&&!(s.named.state==="connected"&&s.named.public_url);
-  note($("codeNote"),lanOnly?"This code points to your local network address ("+s.links.best+"). It only works for people on the same network. Turn on a link in Connections to reach it from anywhere.":"",lanOnly?"info":"");
+  const cl=s.code_link;let msg="",kind="info";
+  if(cl.label==="Local network")msg="This code points to your local network address ("+cl.url+"), so it only works on the same network. Turn on a Temporary link in Connections, or paste a live link below.";
+  else if(cl.label==="Pasted link")msg="The code uses the link you pasted: "+cl.url+(cl.live===false?" — but it is not answering right now.":"");
+  else msg="The code uses your "+cl.label.toLowerCase()+": "+cl.url+" (checked live).";
+  if(cl.live===false&&cl.label==="Pasted link")kind="err";
+  if(cl.dead.length){msg+=" Skipped (not live): "+cl.dead.join(", ")+".";kind=kind==="err"?"err":"info";}
+  note($("codeNote"),msg,kind);
+  if(!S.codeUrlFilled){S.codeUrlFilled=true;$("codeUrl").value=cl.pasted;}
   // start with windows
   const su=s.startup;$("swStartup").checked=!!su.enabled;$("swStartup").disabled=!su.supported;
   $("startupLbl").textContent=!su.supported?"Windows only":su.enabled?"On":"Off";
@@ -406,6 +414,8 @@ $("serverBtn").onclick=async e=>{const run=S.st&&S.st.server.running;
 const tmpToggle=e=>act(e.target,()=>api(S.st.temp.running?"/api/temp/stop":"/api/temp/start",{}));
 $("tmpBtn").onclick=tmpToggle;$("c-tmpBtn").onclick=tmpToggle;
 $("tmpCopy").onclick=$("c-tmpCopy").onclick=()=>copy(S.st.temp.url,"Link");
+$("codeUrlSave").onclick=e=>act(e.target,()=>api("/api/settings",{code_url:$("codeUrl").value}),"Link saved");
+$("codeUrlClear").onclick=e=>{$("codeUrl").value="";act(e.target,()=>api("/api/settings",{code_url:""}),"Code now picks the live link by itself");};
 $("copyCode").onclick=()=>copy(S.st.code,"Connection code");
 document.addEventListener("click",e=>{const c=e.target.closest("[data-copy]");if(c)copy(c.dataset.copy,"Address");
   const p=e.target.closest("[data-peer]");if(p)act(p,()=>api("/api/peers/remove",{url:p.dataset.peer}),"Replica removed");});

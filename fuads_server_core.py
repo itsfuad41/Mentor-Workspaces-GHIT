@@ -360,6 +360,7 @@ def load_config():
         ("term", 1),
         ("peers", []),
         ("custom_url", ""),
+        ("code_url", ""),
         ("cloudflare_token", ""),
         ("cloudflare_url", ""),
         ("cloudflare_auto", False),
@@ -389,11 +390,21 @@ def public_base_url(cfg):
         return str(cfg["cloudflare_url"]).strip().rstrip("/")
     return ""
 
-def make_code(url, view_key, admin_key):
+def url_alive(url, timeout=4):
+    """True when `url` really reaches a running Fuad's Server right now (a saved link can be dead, e.g. a stopped Funnel)."""
+    try:
+        req = urllib.request.Request(url.rstrip("/") + "/health", headers={"User-Agent": "FuadServer/3"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.status == 200
+    except Exception:  # noqa: BLE001
+        return False
+
+def make_code(url, view_key, admin_key, alts=None):
     cfg = load_config()
-    final_url = public_base_url(cfg) or url
+    final_url = url or public_base_url(cfg)
     raw = json.dumps({
         "u": final_url,
+        "l": [a for a in (alts or []) if a and a != final_url],   # other addresses of this server, tried if "u" is down
         "v": view_key,
         "a": admin_key,
         "t": cfg.get("term", 1),
@@ -948,6 +959,19 @@ def promote_to_primary():
     save_config(cfg)
     log(f"Server promoted to PRIMARY (Term {cfg['term']})")
 
+def upsert_peer(cfg, d):
+    """Add the server from a connection code. Pasting a newer code for a server we already know (same keys or same
+    address) REPLACES its old saved link instead of keeping the dead one."""
+    url = str(d["u"]).rstrip("/")
+    entry = {"url": url, "admin_key": d.get("a", ""), "view_key": d.get("v", ""), "alts": [str(a).rstrip("/") for a in d.get("l", []) if a]}
+    peers = cfg.setdefault("peers", [])
+    for i, p in enumerate(peers):
+        if p["url"].rstrip("/") == url or (entry["admin_key"] and p.get("admin_key") == entry["admin_key"]):
+            peers[i] = entry
+            return "updated"
+    peers.append(entry)
+    return "added"
+
 def step_down_to_replica(peer_url, peer_term):
     cfg = load_config()
     cfg["mode"] = "replica"
@@ -1038,6 +1062,23 @@ class MultiPeerReplicator:
                         active_primary = {"peer": p, "term": p_term}
             except Exception:
                 self.peer_states[p_url] = {"reachable": False, "mode": "unknown", "term": 0}
+                # the saved link may simply be old: try the other addresses that came in the connection code
+                for alt in [a.rstrip("/") for a in p.get("alts", []) if a and a.rstrip("/") != p_url]:
+                    try:
+                        req = urllib.request.Request(alt + "/health", headers={"User-Agent": "FaahHealth/2.5"}, method="GET")
+                        with urllib.request.urlopen(req, timeout=4) as resp:
+                            h = json.loads(resp.read().decode())
+                    except Exception:
+                        continue
+                    log(f"Backup link {p_url} is down; switched to {alt}")
+                    p["url"], p_url = alt, alt
+                    save_config(cfg)
+                    p_mode, p_term = h.get("mode", "replica"), int(h.get("term", 0))
+                    self.peer_states[p_url] = {"reachable": True, "mode": p_mode, "term": p_term}
+                    highest_peer_term = max(highest_peer_term, p_term)
+                    if p_mode == "primary" and (not active_primary or p_term > active_primary["term"]):
+                        active_primary = {"peer": p, "term": p_term}
+                    break
 
         my_mode = cfg.get("mode", "primary")
         my_term = int(cfg.get("term", 1))
@@ -2203,7 +2244,8 @@ class Runtime:
         self.start_error = ""
         self.booted = False
         self._stop = threading.Event()
-        self._next = {"server": 0.0, "named": 0.0, "temp": 0.0, "funnel": 0.0}
+        self._next = {"server": 0.0, "named": 0.0, "temp": 0.0, "funnel": 0.0, "links": 0.0}
+        self.link_live = {}   # url -> bool, refreshed in the background
 
     def boot(self):
         cfg = load_config()
@@ -2289,6 +2331,8 @@ class Runtime:
                 if self.want_server and not self.server.running and self._due("server", 15):
                     ok, error = self.start_server()
                     log("Server restarted by the watchdog." if ok else f"Server could not start; will retry: {error}")
+                if self.server.running and self._due("links", 15):
+                    self._check_links()
                 if self.server.running:
                     if cfg.get("cloudflare_token") and cfg.get("cloudflare_auto") and not self.named.running and self._due("named", 30):
                         self.start_named()
@@ -2309,14 +2353,44 @@ class Runtime:
         self.stop_server()
 
     # ---- what the control panel shows ----
-    def best_url(self, cfg=None):
+    def link_candidates(self, cfg=None):
+        """(label, url) in the order they are preferred for the connection code."""
         cfg = cfg or load_config()
-        return public_base_url(cfg) or (self.temp.url if self.temp.state == "connected" else "") or \
-            (f"http://{lan_addresses()[0]}:{self.server.port or cfg.get('port', DEFAULT_PORT)}")
+        out = []
+        if str(cfg.get("code_url") or "").strip():
+            out.append(("Pasted link", cfg["code_url"].strip().rstrip("/")))
+        if str(cfg.get("custom_url") or "").strip():
+            out.append(("Permanent link", cfg["custom_url"].strip().rstrip("/")))
+        if cfg.get("cloudflare_token") and cfg.get("cloudflare_url"):
+            out.append(("My tunnel", str(cfg["cloudflare_url"]).strip().rstrip("/")))
+        if self.temp.state == "connected" and self.temp.url:
+            out.append(("Temporary link", self.temp.url.rstrip("/")))
+        return out
+
+    def code_address(self, cfg=None):
+        """(url, label, live). A pasted link always wins. Otherwise the first link that answers right now;
+        a saved-but-dead link (stopped Funnel, closed tunnel) is skipped instead of being put in the code."""
+        cfg = cfg or load_config()
+        cands = self.link_candidates(cfg)
+        if cands and cands[0][0] == "Pasted link":
+            return cands[0][1], "Pasted link", self.link_live.get(cands[0][1])
+        for label, url in cands:
+            if label == "Temporary link" or self.link_live.get(url):
+                return url, label, True
+        return f"http://{lan_addresses()[0]}:{self.server.port or cfg.get('port', DEFAULT_PORT)}", "Local network", True
+
+    def best_url(self, cfg=None):
+        return self.code_address(cfg)[0]
+
+    def _check_links(self):
+        for _label, url in self.link_candidates():
+            self.link_live[url] = url_alive(url)
 
     def connection_code(self):
         cfg = load_config()
-        return make_code(self.best_url(cfg), cfg["view_key"], cfg["admin_key"])
+        best = self.best_url(cfg)
+        alts = [u for _l, u in self.link_candidates(cfg)] + [f"http://{a}:{self.server.port or cfg.get('port', DEFAULT_PORT)}" for a in lan_addresses()]
+        return make_code(best, cfg["view_key"], cfg["admin_key"], alts)
 
     def status(self):
         cfg = load_config()
@@ -2327,6 +2401,8 @@ class Runtime:
         return {
             "server": {"running": self.server.running, "port": port, "mode": cfg.get("mode", "primary"), "term": cfg.get("term", 1),
                        "uptime": max(0, int(time.time() - SERVER_START_TIME)), "error": self.start_error, "db_size": db_size, "db_path": DB_PATH, "data_dir": DATA_DIR},
+            "code_link": dict(zip(("url", "label", "live"), self.code_address(cfg)), pasted=str(cfg.get("code_url") or ""),
+                              dead=[u for _l, u in self.link_candidates(cfg) if self.link_live.get(u) is False and u != str(cfg.get("code_url") or "").strip().rstrip("/")]),
             "links": {"local": f"http://127.0.0.1:{port}", "lan": [f"http://{a}:{port}" for a in lan_addresses()],
                       "custom": cfg.get("custom_url", ""), "best": self.best_url(cfg)},
             "temp": tun(self.temp),

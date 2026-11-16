@@ -169,6 +169,15 @@ class Panel:
                 if parsed.scheme != "https" or not parsed.netloc:
                     raise ApiError("Enter a valid https address, like https://your-device.your-tailnet.ts.net")
             cfg["custom_url"] = url
+        if "code_url" in body:
+            url = str(body["code_url"] or "").strip().rstrip("/")
+            if url:
+                parsed = urllib.parse.urlparse(url)
+                if parsed.scheme not in ("http", "https") or not parsed.netloc:
+                    raise ApiError("Paste the full live link, like https://something.trycloudflare.com")
+            cfg["code_url"] = url
+            core.save_config(cfg)
+            self.rt._check_links()
         if "snapshot_keep_days" in body:
             days = int(body["snapshot_keep_days"] or 0)
             if days < 0:
@@ -210,10 +219,7 @@ class Panel:
         except Exception as error:  # noqa: BLE001
             raise ApiError(f"That is not a valid connection code ({error}).") from error
         cfg = core.load_config()
-        peers = cfg.setdefault("peers", [])
-        if any(p["url"].rstrip("/") == d["u"].rstrip("/") for p in peers):
-            raise ApiError("That server is already in the list.")
-        peers.append({"url": d["u"], "admin_key": d.get("a", ""), "view_key": d.get("v", "")})
+        core.upsert_peer(cfg, d)
         core.save_config(cfg)
         threading.Thread(target=core.REPLICATOR.tick, daemon=True).start()
         return {"ok": True}
@@ -234,9 +240,7 @@ class Panel:
             raise ApiError(f"That is not a valid connection code ({error}).") from error
         cfg = core.load_config()
         cfg["admin_key"], cfg["view_key"] = d.get("a", cfg["admin_key"]), d.get("v", cfg["view_key"])
-        peers = cfg.setdefault("peers", [])
-        if not any(p["url"].rstrip("/") == d["u"].rstrip("/") for p in peers):
-            peers.append({"url": d["u"], "admin_key": d.get("a", ""), "view_key": d.get("v", "")})
+        core.upsert_peer(cfg, d)
         core.save_config(cfg)
         core.step_down_to_replica(d["u"], d.get("t", 1))
         threading.Thread(target=core.REPLICATOR.tick, daemon=True).start()

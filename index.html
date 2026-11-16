@@ -2222,8 +2222,16 @@ document.querySelectorAll("table").forEach(table => {
     clearTimeout(H.timer);H.timer=setTimeout(persistDay,500);
   };
   const _submit=submitProduction;submitProduction=async function(){
+    const wasPast=H.active;
     if(H.active)await persistDay();
-    const r=await _submit.apply(this,arguments);
+    let ok=false;const _alert=window.alert;window.alert=function(m){if(/submitted/i.test(String(m)))ok=true;return _alert.apply(window,arguments);};
+    let r;try{r=await _submit.apply(this,arguments);}finally{window.alert=_alert;}
+    if(wasPast&&ok){ /* old day finished: leave it and start fresh on today so nothing carries the old date */
+      try{localStorage.removeItem(productionDraftKey());}catch{}
+      await window.backToToday();
+      location.reload();
+      return r;
+    }
     if(H.active){ /* a submitted summary locks that day: re-check and freeze */
       H.lock={};const n=$("projectSelect").value;await checkSubmitted(n,H.day);
       if(!editable(n)&&projects[n]&&!Object.isFrozen(projects[n])){projects[n]=frozen(clone(projects[n]));H.base[n]=JSON.stringify(projects[n]);renderAll();}
