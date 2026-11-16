@@ -116,6 +116,7 @@ th{color:var(--mut);font-weight:700;font-size:12px;position:sticky;top:0;backgro
     <nav id="nav">
       <button data-p="overview" class="on"><span class="ic">&#9673;</span>Overview</button>
       <button data-p="connect"><span class="ic">&#128279;</span>Connections</button>
+      <button data-p="flow"><span class="ic">&#128760;</span>Workflows</button>
       <button data-p="days"><span class="ic">&#128197;</span>Daily copies</button>
       <button data-p="backup"><span class="ic">&#128451;</span>Backup &amp; replicas</button>
       <button data-p="activity"><span class="ic">&#128200;</span>Activity &amp; log</button>
@@ -247,6 +248,13 @@ th{color:var(--mut);font-weight:700;font-size:12px;position:sticky;top:0;backgro
     </section>
 
     <!-- ACTIVITY -->
+    <section class="page" id="p-flow">
+      <div class="card" style="padding:0;overflow:hidden">
+        <div class="row" style="padding:10px 14px;margin:0"><b>Live workflows</b><span class="mut" style="flex:1">Browsers, online database, desktop app, this server and its backups &mdash; updates every few seconds.</span><button class="small" id="flowOpen">Open in browser</button></div>
+        <div id="flowMsg" class="notice info" hidden style="margin:0 14px 12px"></div>
+        <iframe id="flowFrame" title="Live workflows" style="width:100%;height:1100px;border:0;display:block;background:transparent" scrolling="no"></iframe>
+      </div>
+    </section>
     <section class="page" id="p-activity">
       <div class="card">
         <h3>Live activity</h3>
@@ -331,9 +339,13 @@ function signOut(silent){S.token="";S.st=null;$("app").hidden=true;$("login").hi
 $("signOut").onclick=()=>signOut();
 
 /* nav */
-const TITLES={overview:"Overview",connect:"Connections",days:"Daily copies",backup:"Backup & replicas",activity:"Activity & log",settings:"Settings"};
+const TITLES={flow:"Live workflows",overview:"Overview",connect:"Connections",days:"Daily copies",backup:"Backup & replicas",activity:"Activity & log",settings:"Settings"};
 $("nav").onclick=e=>{const b=e.target.closest("button");if(!b)return;S.page=b.dataset.p;document.querySelectorAll("#nav button").forEach(x=>x.classList.toggle("on",x===b));
-  document.querySelectorAll(".page").forEach(p=>p.classList.toggle("on",p.id==="p-"+S.page));$("title").textContent=TITLES[S.page];refresh();};
+  document.querySelectorAll(".page").forEach(p=>p.classList.toggle("on",p.id==="p-"+S.page));$("title").textContent=TITLES[S.page];if(S.page==="flow")loadFlow();refresh();};
+window.addEventListener("message",e=>{if(e.source===$("flowFrame").contentWindow&&e.data&&e.data.flowHeight)$("flowFrame").style.height=Math.max(560,Math.ceil(e.data.flowHeight)+8)+"px";});
+function flowUrl(){const sv=S.st&&S.st.server;return sv&&sv.running?`http://127.0.0.1:${sv.port}/workflows`:"";}
+function loadFlow(){const u=flowUrl(),f=$("flowFrame");note($("flowMsg"),u?"":"Start the server first: the workflow view reads its live connections.","info");if(u&&f.dataset.src!==u){f.dataset.src=u;f.src=u+"#k="+encodeURIComponent(S.st.keys.admin);}if(!u){f.removeAttribute("src");f.dataset.src="";}}
+$("flowOpen").onclick=()=>{const u=flowUrl();if(u)window.open(u+"#k="+encodeURIComponent(S.st.keys.admin),"_blank");};
 
 /* rendering */
 function tunnelView(t,pillEl,urlEl,msgEl,btn,copyBtn,startLabel,stopLabel){

@@ -4,7 +4,7 @@ Fuad's Project Server - core (v3)
 ---------------------------------
 Multi-PC High-Availability Sync Server for FAAH Mentor Workstation.
 Supports 1 Primary + Multiple Backup Replicas, rolling backups,
-failover term election, embedded workflow telemetry and (new in v3)
+failover term election and (new in v3)
 DAILY SNAPSHOTS: every project is stored on the server once per day,
 so older dates can be opened and downloaded as Excel from the website.
 This module has no GUI; Fuads_Server_App.py is the desktop app on top of it.
@@ -46,234 +46,6 @@ TAILSCALE_DOWNLOAD_URL = "https://tailscale.com/download/windows"
 KV_PREFIXES = ("draft:", "qc:")
 SERVER_START_TIME = time.time()
 
-WORKFLOW_HTML = r"""<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Fuad Project Server · Live Workflows</title>
-<style>
-:root{--bg:#f3f5f8;--card:#fff;--ink:#16202a;--mut:#5b6976;--line:#d6dde5;--ok:#1f8a5b;--bad:#c0392b;--warn:#b7791f;--acc:#1769aa;--soft:#eef3f8;--navy:#17324b}
-@media(prefers-color-scheme:dark){:root{--bg:#0f151b;--card:#18212a;--ink:#e6edf3;--mut:#93a1ae;--line:#2a3641;--soft:#1f2b36}}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,Segoe UI,Roboto,sans-serif}
-header{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 20px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5;box-shadow:0 2px 8px #16202a0c}
-header h1{font-size:17px;margin:0 8px 0 0}
-.pill{padding:3px 10px;border-radius:99px;font-size:12px;font-weight:600;background:var(--soft);border:1px solid var(--line)}
-.pill.ok{color:var(--ok);border-color:var(--ok)}.pill.bad{color:var(--bad);border-color:var(--bad)}.pill.warn{color:var(--warn);border-color:var(--warn)}
-.sp{flex:1}
-button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--soft);color:var(--ink);padding:6px 12px;border-radius:7px}
-button.primary{background:var(--acc);color:#fff;border-color:var(--acc)}
-nav{display:flex;gap:4px;padding:10px 18px 0}
-nav button{border-radius:8px 8px 0 0;border-bottom:none}
-nav button.on{background:var(--card);font-weight:700;border-color:var(--line)}
-main{padding:0 18px 30px}
-.panel{display:none;background:var(--card);border:1px solid var(--line);border-radius:0 10px 10px 10px;padding:16px}
-.panel.on{display:block}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:14px}
-.card{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--card);box-shadow:0 2px 8px #16202a08}
-.card h3{margin:0 0 8px;font-size:15px;display:flex;align-items:center;gap:8px}
-table{border-collapse:collapse;width:100%;font-size:13px}
-th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);vertical-align:top}
-th{color:var(--mut);font-weight:600;position:sticky;top:0;background:var(--card)}
-.scroll{max-height:320px;overflow:auto}
-.mut{color:var(--mut)}.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}
-.mono{font-family:ui-monospace,Consolas,monospace;font-size:12px}
-#login{position:fixed;inset:0;background:rgba(10,22,34,.68);display:flex;align-items:center;justify-content:center;z-index:20;backdrop-filter:blur(3px)}
-#login .box{background:var(--card);padding:22px 24px;border-radius:12px;width:360px;max-width:94vw;box-shadow:0 20px 60px #0004;border:1px solid var(--line)}
-#login h2{margin:0 0 5px;color:var(--navy)}
-#login .hint{margin:0 0 16px;color:var(--mut)}
-#login label{display:block;font-weight:600;margin:10px 0 4px}
-#login input{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink);margin:0 0 7px}
-#err{color:var(--bad);min-height:20px;margin-top:8px;font-weight:600}
-#login .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
-#login .actions button{min-width:82px}
-#metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:14px 0}
-.metric{padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
-.metric b{display:block;font-size:20px}.metric span{color:var(--mut);font-size:12px}
-.peer{padding:7px 9px;margin-top:6px;border:1px solid var(--line);border-radius:8px;font-size:12px;overflow-wrap:anywhere}
-.database-table{font-size:12px}.database-table td:last-child{text-align:right;font-variant-numeric:tabular-nums}
-.dashboard{position:relative;min-height:580px;margin:4px 0 8px;padding:18px;border:1px solid var(--line);border-radius:12px;background:linear-gradient(145deg,var(--card),var(--soft));overflow:hidden}
-.map-lines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
-.map-lines path{fill:none;stroke:#647789;stroke-width:2;stroke-dasharray:7 6}
-.map-lines marker path{fill:#1769aa;stroke:none}
-.map-lines path.live{stroke:#188354;stroke-dasharray:none}
-.node{position:absolute;z-index:1;width:30%;min-height:138px;padding:14px 16px;border:2px solid var(--ok);border-radius:14px;background:var(--card);box-shadow:0 6px 20px #10223512}
-.node.offline{border-color:var(--bad)}
-.node.pending{border-color:var(--warn)}
-.node h3{margin:0 0 9px;font-size:15px;color:var(--navy)}
-.node p{margin:4px 0;color:var(--mut);font-size:13px;overflow-wrap:anywhere}
-.node .node-status{display:inline-flex;align-items:center;gap:6px;margin-bottom:6px;padding:2px 8px;border-radius:20px;background:var(--soft);font-size:12px;font-weight:700}
-.node-status:before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor}
-.node-status.ok{color:var(--ok)}.node-status.bad{color:var(--bad)}.node-status.warn{color:var(--warn)}
-#nodeClients{left:3%;top:9%;border-style:dashed;border-color:#647789}
-#nodeCloud{left:39%;top:5%;width:30%;min-height:180px}
-#nodeDesktop{left:3%;top:67%;border-style:dashed;border-color:#647789}
-#nodePrimary{left:39%;top:67%;width:30%;min-height:160px}
-#nodeBackup{right:3%;top:67%;width:27%;min-height:160px}
-.connection-label{position:absolute;z-index:2;padding:3px 10px;border:1px solid var(--line);border-radius:99px;background:var(--card);font-size:12px;font-weight:600}
-#labelClientCloud{left:27%;top:24%}#labelClientsPrimary{left:25%;top:54%}#labelCloudPrimary{left:47%;top:52%}#labelPrimaryBackup{left:69%;top:78%}
-.empty{padding:18px;text-align:center;color:var(--mut)}
-#actTable tbody tr:nth-child(even){background:var(--soft)}
-@media(max-width:900px){.dashboard{display:grid;gap:10px;min-height:0;padding:12px}.node{position:relative;inset:auto!important;width:auto!important;min-height:0!important}.map-lines,.connection-label{display:none}.grid{grid-template-columns:1fr}header{padding:10px 12px}main{padding:0 10px 20px}}
-</style>
-</head>
-<body>
-<header>
-  <h1>Fuad Project Server · Live Workflows</h1>
-  <span class="pill" id="pMode">server: ...</span>
-  <span class="pill" id="pCloud">online DB: checking</span>
-  <span class="pill" id="pRepl">backup: checking</span>
-  <span class="sp"></span>
-  <span class="mut" id="stamp"></span>
-  <label class="mut" style="display:flex;align-items:center;gap:5px"><input id="autoRefresh" type="checkbox" checked> auto-refresh</label>
-  <button id="btnRefresh">Refresh now</button>
-  <button id="btnOut">Log out</button>
-</header>
-<nav id="tabs">
-  <button data-p="dbs" class="on">Cluster & Databases</button>
-  <button data-p="act">Live Activity</button>
-</nav>
-<main>
-  <section class="panel on" id="dbs">
-    <div id="clusterCoverage" class="mut" style="margin:0 0 10px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card)">Loading configured server connections…</div>
-    <div class="dashboard" id="dashboard">
-      <svg class="map-lines" viewBox="0 0 1000 580" preserveAspectRatio="none" aria-hidden="true">
-        <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#1769aa"></path></marker></defs>
-        <path id="linkClientsCloud" d="M330 150 C390 150 380 100 440 100" marker-end="url(#arrow)"></path>
-        <path id="linkClientsPrimary" d="M300 175 C360 190 360 430 440 455" marker-end="url(#arrow)"></path>
-        <path id="linkCloudPrimary" d="M540 240 L540 390" marker-end="url(#arrow)"></path>
-        <path id="linkDesktopPrimary" d="M330 450 C390 450 390 480 440 480" marker-end="url(#arrow)"></path>
-        <path id="linkPrimaryBackup" d="M690 480 L735 480" marker-end="url(#arrow)"></path>
-      </svg>
-      <div class="node" id="nodeClients"><h3>Browsers — mentors &amp; admin</h3><span class="node-status warn" id="clientStatus">Waiting for clients</span><div id="clientList"></div></div>
-      <div class="node" id="nodeCloud"><h3>Online database</h3><span class="node-status warn" id="cloudStatus">Checking connection</span><div id="cloudDetails"></div></div>
-      <div class="node pending" id="nodeDesktop"><h3>Desktop app (Python)</h3><span class="node-status warn" id="desktopStatus">Waiting for desktop app</span><div id="desktopDetails"><p>QC workstation and summaries sync through this PC server.</p></div></div>
-      <div class="node" id="nodePrimary"><h3 id="primaryTitle">PC Project Server</h3><span class="node-status warn" id="primaryStatus">Checking server</span><div id="primaryDetails"></div></div>
-      <div class="node" id="nodeBackup"><h3>Backup server(s)</h3><span class="node-status warn" id="backupStatus">Checking replicas</span><div id="backupDetails"></div></div>
-      <span class="connection-label" id="labelClientCloud">Browser ↔ online tables</span>
-      <span class="connection-label" id="labelClientsPrimary">Browser ↔ PC server</span>
-      <span class="connection-label" id="labelCloudPrimary">Server admin check</span>
-      <span class="connection-label" id="labelPrimaryBackup">Replica sync</span>
-    </div>
-    <div id="metrics"></div>
-    <div class="grid" id="dbCards"></div>
-  </section>
-  <section class="panel" id="act">
-    <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;">
-      <input id="actFilter" placeholder="Filter activity..." style="padding:6px 9px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink);min-width:260px">
-      <span class="mut" id="actStats"></span>
-    </div>
-    <div class="scroll" style="max-height:560px"><table id="actTable"><thead><tr><th>Time</th><th>User</th><th>Server</th><th>Method</th><th>Target</th><th>Result</th><th>Detail</th></tr></thead><tbody></tbody></table></div>
-  </section>
-</main>
-<div id="login"><form class="box" id="loginForm">
-  <h2>Admin Login</h2>
-  <p class="hint">Use your website administrator account.</p>
-  <label for="u">Username</label><input id="u" autocomplete="username" required>
-  <label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password" required>
-  <div id="err"></div>
-  <div class="actions"><button type="button" id="cancelLogin">Cancel</button><button class="primary" id="go" type="submit">Sign in</button></div>
-</form></div>
-<script>
-const $=id=>document.getElementById(id);
-const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const S={base:window.location.origin,auth:"",info:null,repl:null,act:[],clients:[],nodes:[],stats:{writes:0,polls:0,errors:0},actLast:0,timer:null};
-
-async function api(path,opt={}){const r=await fetch(S.base+path,{...opt,headers:{"X-Key":S.auth,...(opt.body?{"Content-Type":"application/json"}:{}),...(opt.headers||{})}});let j=null;try{j=await r.json()}catch{}if(!r.ok)throw Error((j&&j.error)||("HTTP "+r.status));return j;}
-
-function showLogin(msg){$("login").style.display="flex";$("err").textContent=msg||"";}
-async function signIn(){
-  const username=$("u").value.trim(),password=$("pw").value;
-  try{
-    if(!username||!password)throw Error("Enter your website admin username and password.");
-    const r=await api("/admin/login",{method:"POST",body:JSON.stringify({username,password})});S.auth=r.token;
-    $("pw").value="";$("login").style.display="none";start();
-  }
-  catch(e){$("err").textContent=e.message;}
-}
-function cancelLogin(){clearInterval(S.timer);window.location.replace("/");}
-async function signOut(){clearInterval(S.timer);let warning="";try{if(S.auth)await api("/admin/logout",{method:"POST"});}catch(e){warning="Signed out locally, but the server could not revoke this session: "+e.message;}S.auth="";S.info=null;S.repl=null;S.act=[];S.clients=[];S.nodes=[];S.actLast=0;showLogin(warning);}
-async function refresh(){
-  try{
-    S.info=await api("/admin/dbinfo?detail=1");
-    S.repl=await api("/admin/replication");
-    const a=await api("/admin/activity?since="+S.actLast);
-    if(a.items.length){S.act=[...a.items.reverse(),...S.act].slice(0,300);S.actLast=a.last;}
-    S.clients=a.clients||[];
-    S.nodes=a.nodes||[];
-    S.stats=a.stats||{writes:0,polls:0,errors:0};
-    paint();
-  }catch(e){$("pMode").className="pill bad";$("pMode").textContent="Server unreachable";$("primaryStatus").textContent=e.message;$("nodePrimary").className="node offline";$("stamp").textContent="Refresh failed · "+new Date().toLocaleTimeString();}
-}
-function start(){refresh();clearInterval(S.timer);S.timer=setInterval(()=>{if($("autoRefresh").checked)refresh();},4000);}
-
-function paint(){
-  const i=S.info,r=S.repl;
-  if(i){$("pMode").className="pill "+(i.server.mode==="replica"?"warn":"ok");$("pMode").textContent=`server: ${i.server.mode.toUpperCase()} · term ${i.server.term}`;
-    $("nodePrimary").className="node";$("primaryTitle").textContent=`PC Project Server — ${i.server.mode.toUpperCase()}`;
-    $("primaryStatus").className="node-status ok";$("primaryStatus").textContent="Online";
-    $("primaryDetails").innerHTML=`<p>${esc(i.server.db_path.split(/[\\\\/]/).pop())} · ${formatBytes(i.server.db_size)}</p><p>${i.projects.length} project(s) · term ${esc(i.server.term)}</p><p>Port ${esc(i.server.port)} · uptime ${formatDuration(i.server.uptime)}</p>`;
-    $("nodeCloud").className="node "+(i.online_db?.connected?"":"offline");
-    $("cloudStatus").className="node-status "+(i.online_db?.connected?"ok":"bad");$("cloudStatus").textContent=i.online_db?.connected?"Connected":"Disconnected";
-    $("pCloud").className="pill "+(i.online_db?.connected?"ok":"bad");$("pCloud").textContent=i.online_db?.connected?"online DB: connected":"online DB: offline";
-    $("cloudDetails").innerHTML=`<p>${esc(i.online_db?.message||"Connection status unavailable")}</p><p>${esc(i.online_db?.url||"")}</p><p>${i.online_db?.tables?.filter(t=>t.available).length||0}/${i.online_db?.tables?.length||0} tables accessible</p>`;
-  }
-  if(r){
-    const peers=r.peers||[],online=peers.filter(p=>p.reachable).length;
-    $("pRepl").className="pill "+(peers.length&&online===peers.length&&r.in_sync?"ok":"warn");
-    $("pRepl").textContent=peers.length?`replicas: ${online}/${peers.length} reachable`:"replicas: not configured";
-    $("nodeBackup").className="node "+(peers.length&&online===peers.length?"":"pending");
-    $("backupStatus").className="node-status "+(peers.length&&online===peers.length?"ok":"warn");
-    $("backupStatus").textContent=peers.length?`${online}/${peers.length} reachable · ${r.in_sync?"in sync":"sync pending"}`:"No replicas configured";
-    $("backupDetails").innerHTML=peers.map(p=>`<div class="peer"><b>${esc(p.mode||"unknown")} · ${p.reachable?"reachable":"offline"}</b><br>${esc(p.url)} · term ${esc(p.term??"—")}</div>`).join("")||"<p>Add replica URLs in server settings to enable replication.</p>";
-    $("primaryDetails").innerHTML+=`<p>${esc(r.status)}</p>`;
-    $("linkPrimaryBackup").classList.toggle("live",online>0&&r.in_sync);
-  }
-  if(i){
-    const clients=S.clients||[],browsers=clients.filter(c=>c.kind!=="desktop"),desktop=clients.filter(c=>c.kind==="desktop");
-        $("clientStatus").className="node-status "+(browsers.length?"ok":"warn");
-        $("clientStatus").textContent=browsers.length?`${browsers.length} active browser${browsers.length===1?"":"s"}`:"Waiting for browser clients";
-        $("clientList").innerHTML=browsers.map(c=>`<p>${esc(c.name)} · ${esc(c.server||"this server")} · active ${esc(c.seconds_ago)}s ago</p>`).join("")||"<p>No browser sync requests in the last 45 seconds.</p>";
-        $("nodeDesktop").className="node "+(desktop.length?"":"pending");
-        $("desktopStatus").className="node-status "+(desktop.length?"ok":"warn");
-        $("desktopStatus").textContent=desktop.length?"Connected":"Waiting for desktop app";
-        $("desktopDetails").innerHTML=desktop.map(c=>`<p>${esc(c.name)} · ${esc(c.server||"this server")} · active ${esc(c.seconds_ago)}s ago</p>`).join("")||"<p>QC workstation and summaries sync through this PC server.</p>";
-        $("linkDesktopPrimary").classList.toggle("live",desktop.length>0);
-        $("linkClientsCloud").classList.toggle("live",browsers.length>0&&Boolean(i.online_db?.connected));
-        $("linkClientsPrimary").classList.toggle("live",browsers.length>0);
-    $("linkCloudPrimary").classList.toggle("live",Boolean(i.online_db?.connected));
-  }
-  $("stamp").textContent="Updated "+new Date().toLocaleTimeString();
-  const onlineNodes=S.nodes.filter(n=>n.reachable).length,failedNodes=S.nodes.length-onlineNodes;
-  const nodeSummary=S.nodes.map(n=>`${n.name}: ${n.reachable?"online":`offline (${n.error||"unreachable"})`}`).join(" · ");
-  $("clusterCoverage").textContent=S.nodes.length
-    ? `Connection activity: ${onlineNodes}/${S.nodes.length} configured server(s) reachable · ${nodeSummary}`
-    : "Connection activity is local to this server. Configure its peers to include their connections.";
-  const browserCount=S.clients.filter(c=>c.kind!=="desktop").length,desktopCount=S.clients.filter(c=>c.kind==="desktop").length;
-  $("metrics").innerHTML=`<div class="metric"><b>${browserCount}</b><span>Active browser clients</span></div><div class="metric"><b>${desktopCount}</b><span>Active desktop clients</span></div><div class="metric"><b>${S.stats.writes}</b><span>Recorded writes</span></div><div class="metric"><b>${S.stats.polls}</b><span>State polls</span></div><div class="metric"><b>${S.stats.errors}</b><span>Request errors</span></div>`;
-  const localTables=i?.tables||[],cloudTables=i?.online_db?.tables||[];
-  $("dbCards").innerHTML=i?`<div class="card"><h3>Local SQLite · ${esc(i.server.db_path)}</h3><div class="scroll"><table class="database-table"><thead><tr><th>Table</th><th>Rows</th></tr></thead><tbody>${localTables.map(t=>`<tr><td>${esc(t.name)}</td><td>${esc(t.rows)}</td></tr>`).join("")||"<tr><td colspan='2'>No application tables found</td></tr>"}</tbody></table></div></div><div class="card"><h3>Online database tables</h3><div class="scroll"><table class="database-table"><thead><tr><th>Table</th><th>Status / rows</th></tr></thead><tbody>${cloudTables.map(t=>`<tr><td>${esc(t.name)}</td><td class="${t.available?"ok":"bad"}">${t.available?(t.rows==null?"Accessible · count unavailable":esc(t.rows)+" rows"):esc(t.error||"Unavailable")}</td></tr>`).join("")||"<tr><td colspan='2'>No cloud table checks returned</td></tr>"}</tbody></table></div></div><div class="card"><h3>Local projects (${i.projects.length})</h3><div class="scroll"><table><thead><tr><th>Project</th><th>Parts</th><th>Version</th></tr></thead><tbody>${i.projects.map(p=>`<tr><td><b>${esc(p.name)}</b></td><td>${p.parts}</td><td class="mono">${esc(p.version.slice(0,8))}</td></tr>`).join("")||"<tr><td colspan='3'>No projects</td></tr>"}</tbody></table></div></div>`:"";
-
-  const f=$("actFilter").value.trim().toLowerCase();
-  $("actTable").querySelector("tbody").innerHTML=S.act.filter(a=>!f||[a.who,a.server,a.method,a.path,a.detail].join(" ").toLowerCase().includes(f)).map(a=>`<tr>
-    <td>${new Date(a.ts*1000).toLocaleTimeString()}</td><td>${esc(a.who)}</td><td>${esc(a.server||"this server")}</td><td><b>${esc(a.method)}</b></td><td class="mono">${esc(a.path)}</td>
-    <td class="${a.status>=400?"bad":"ok"}">${a.status}</td><td>${esc(a.detail||"")}</td>
-  </tr>`).join("")||"<tr><td colspan='7'>No activity recorded</td></tr>";
-}
-document.querySelectorAll("#tabs button").forEach(b=>b.onclick=()=>{document.querySelectorAll("#tabs button").forEach(x=>x.classList.toggle("on",x===b));document.querySelectorAll(".panel").forEach(p=>p.classList.toggle("on",p.id===b.dataset.p));});
-function formatBytes(n){if(n<1024)return n+" B";if(n<1024*1024)return (n/1024).toFixed(1)+" KB";return (n/1024/1024).toFixed(1)+" MB";}
-function formatDuration(s){s=Math.max(0,Math.floor(Number(s)||0));const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);return h?`${h}h ${m}m`:`${m}m ${s%60}s`;}
-$("loginForm").addEventListener("submit",e=>{e.preventDefault();signIn();});
-$("cancelLogin").onclick=cancelLogin;
-$("btnRefresh").onclick=refresh;
-$("btnOut").onclick=signOut;
-$("actFilter").addEventListener("input",()=>{if(S.info)paint();});
-$("u").focus();
-</script>
-</body>
-</html>
-"""
 
 def _data_dir():
     forced = os.environ.get("FAAH_SERVER_DIR")
@@ -1332,6 +1104,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._cors()
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(b)))
+                self.send_header("Cache-Control", "no-cache")
                 self.end_headers()
                 return self.wfile.write(b)
 
@@ -1731,6 +1504,237 @@ IS_WINDOWS = sys.platform.startswith("win")
 
 def _no_window_flags():
     return 0x08000000 if IS_WINDOWS else 0  # CREATE_NO_WINDOW
+
+WORKFLOW_HTML = r"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fuad Project Server · Live Workflows</title>
+<style>
+:root{--bg:#f3f5f8;--card:#fff;--ink:#16202a;--mut:#5b6976;--line:#d6dde5;--ok:#1f8a5b;--bad:#c0392b;--warn:#b7791f;--acc:#1769aa;--soft:#eef3f8;--navy:#17324b}
+@media(prefers-color-scheme:dark){:root{--bg:#0f151b;--card:#18212a;--ink:#e6edf3;--mut:#93a1ae;--line:#2a3641;--soft:#1f2b36}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,Segoe UI,Roboto,sans-serif}
+header{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 20px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5;box-shadow:0 2px 8px #16202a0c}
+header h1{font-size:17px;margin:0 8px 0 0}
+.pill{padding:3px 10px;border-radius:99px;font-size:12px;font-weight:600;background:var(--soft);border:1px solid var(--line)}
+.pill.ok{color:var(--ok);border-color:var(--ok)}.pill.bad{color:var(--bad);border-color:var(--bad)}.pill.warn{color:var(--warn);border-color:var(--warn)}
+.sp{flex:1}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--soft);color:var(--ink);padding:6px 12px;border-radius:7px}
+button.primary{background:var(--acc);color:#fff;border-color:var(--acc)}
+nav{display:flex;gap:4px;padding:10px 18px 0}
+nav button{border-radius:8px 8px 0 0;border-bottom:none}
+nav button.on{background:var(--card);font-weight:700;border-color:var(--line)}
+main{padding:0 18px 30px}
+.panel{display:none;background:var(--card);border:1px solid var(--line);border-radius:0 10px 10px 10px;padding:16px}
+.panel.on{display:block}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:14px}
+.card{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--card);box-shadow:0 2px 8px #16202a08}
+.card h3{margin:0 0 8px;font-size:15px;display:flex;align-items:center;gap:8px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--mut);font-weight:600;position:sticky;top:0;background:var(--card)}
+.scroll{max-height:320px;overflow:auto}
+.mut{color:var(--mut)}.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}
+.mono{font-family:ui-monospace,Consolas,monospace;font-size:12px}
+#login{position:fixed;inset:0;background:rgba(10,22,34,.68);display:flex;align-items:center;justify-content:center;z-index:20;backdrop-filter:blur(3px)}
+#login .box{background:var(--card);padding:22px 24px;border-radius:12px;width:360px;max-width:94vw;box-shadow:0 20px 60px #0004;border:1px solid var(--line)}
+#login h2{margin:0 0 5px;color:var(--navy)}
+#login .hint{margin:0 0 16px;color:var(--mut)}
+#login label{display:block;font-weight:600;margin:10px 0 4px}
+#login input{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink);margin:0 0 7px}
+#err{color:var(--bad);min-height:20px;margin-top:8px;font-weight:600}
+#login .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
+#login .actions button{min-width:82px}
+#metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:14px 0}
+.metric{padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+.metric b{display:block;font-size:20px}.metric span{color:var(--mut);font-size:12px}
+.peer{padding:7px 9px;margin-top:6px;border:1px solid var(--line);border-radius:8px;font-size:12px;overflow-wrap:anywhere}
+.database-table{font-size:12px}.database-table td:last-child{text-align:right;font-variant-numeric:tabular-nums}
+.dashboard{position:relative;min-height:580px;margin:4px 0 8px;padding:18px;border:1px solid var(--line);border-radius:12px;background:linear-gradient(145deg,var(--card),var(--soft));overflow:hidden}
+.map-lines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.map-lines path{fill:none;stroke:#647789;stroke-width:2;stroke-dasharray:7 6}
+.map-lines marker path{fill:#1769aa;stroke:none}
+.map-lines path.live{stroke:#188354;stroke-dasharray:none}
+.node{position:absolute;z-index:1;width:30%;min-height:138px;padding:14px 16px;border:2px solid var(--ok);border-radius:14px;background:var(--card);box-shadow:0 6px 20px #10223512}
+.node.offline{border-color:var(--bad)}
+.node.pending{border-color:var(--warn)}
+.node h3{margin:0 0 9px;font-size:15px;color:var(--navy)}
+.node p{margin:4px 0;color:var(--mut);font-size:13px;overflow-wrap:anywhere}
+.node .node-status{display:inline-flex;align-items:center;gap:6px;margin-bottom:6px;padding:2px 8px;border-radius:20px;background:var(--soft);font-size:12px;font-weight:700}
+.node-status:before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor}
+.node-status.ok{color:var(--ok)}.node-status.bad{color:var(--bad)}.node-status.warn{color:var(--warn)}
+#nodeClients{left:3%;top:9%;border-style:dashed;border-color:#647789}
+#nodeCloud{left:39%;top:5%;width:30%;min-height:180px}
+#nodeDesktop{left:3%;top:67%;border-style:dashed;border-color:#647789}
+#nodePrimary{left:39%;top:67%;width:30%;min-height:160px}
+#nodeBackup{right:3%;top:67%;width:27%;min-height:160px}
+.connection-label{position:absolute;z-index:2;padding:3px 10px;border:1px solid var(--line);border-radius:99px;background:var(--card);font-size:12px;font-weight:600}
+#labelClientCloud{left:27%;top:24%}#labelClientsPrimary{left:25%;top:54%}#labelCloudPrimary{left:47%;top:52%}#labelPrimaryBackup{left:69%;top:78%}
+.empty{padding:18px;text-align:center;color:var(--mut)}
+#actTable tbody tr:nth-child(even){background:var(--soft)}
+@media(max-width:900px){.dashboard{display:grid;gap:10px;min-height:0;padding:12px}.node{position:relative;inset:auto!important;width:auto!important;min-height:0!important}.map-lines,.connection-label{display:none}.grid{grid-template-columns:1fr}header{padding:10px 12px}main{padding:0 10px 20px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Fuad Project Server · Live Workflows</h1>
+  <span class="pill" id="pMode">server: ...</span>
+  <span class="pill" id="pCloud">online DB: checking</span>
+  <span class="pill" id="pRepl">backup: checking</span>
+  <span class="sp"></span>
+  <span class="mut" id="stamp"></span>
+  <label class="mut" style="display:flex;align-items:center;gap:5px"><input id="autoRefresh" type="checkbox" checked> auto-refresh</label>
+  <button id="btnRefresh">Refresh now</button>
+  <button id="btnOut">Log out</button>
+</header>
+<nav id="tabs">
+  <button data-p="dbs" class="on">Cluster & Databases</button>
+  <button data-p="act">Live Activity</button>
+</nav>
+<main>
+  <section class="panel on" id="dbs">
+    <div id="clusterCoverage" class="mut" style="margin:0 0 10px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card)">Loading configured server connections…</div>
+    <div class="dashboard" id="dashboard">
+      <svg class="map-lines" viewBox="0 0 1000 580" preserveAspectRatio="none" aria-hidden="true">
+        <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#1769aa"></path></marker></defs>
+        <path id="linkClientsCloud" d="M330 150 C390 150 380 100 440 100" marker-end="url(#arrow)"></path>
+        <path id="linkClientsPrimary" d="M300 175 C360 190 360 430 440 455" marker-end="url(#arrow)"></path>
+        <path id="linkCloudPrimary" d="M540 240 L540 390" marker-end="url(#arrow)"></path>
+        <path id="linkDesktopPrimary" d="M330 450 C390 450 390 480 440 480" marker-end="url(#arrow)"></path>
+        <path id="linkPrimaryBackup" d="M690 480 L735 480" marker-end="url(#arrow)"></path>
+      </svg>
+      <div class="node" id="nodeClients"><h3>Browsers — mentors &amp; admin</h3><span class="node-status warn" id="clientStatus">Waiting for clients</span><div id="clientList"></div></div>
+      <div class="node" id="nodeCloud"><h3>Online database</h3><span class="node-status warn" id="cloudStatus">Checking connection</span><div id="cloudDetails"></div></div>
+      <div class="node pending" id="nodeDesktop"><h3>Desktop app (Python)</h3><span class="node-status warn" id="desktopStatus">Waiting for desktop app</span><div id="desktopDetails"><p>QC workstation and summaries sync through this PC server.</p></div></div>
+      <div class="node" id="nodePrimary"><h3 id="primaryTitle">PC Project Server</h3><span class="node-status warn" id="primaryStatus">Checking server</span><div id="primaryDetails"></div></div>
+      <div class="node" id="nodeBackup"><h3>Backup server(s)</h3><span class="node-status warn" id="backupStatus">Checking replicas</span><div id="backupDetails"></div></div>
+      <span class="connection-label" id="labelClientCloud">Browser ↔ online tables</span>
+      <span class="connection-label" id="labelClientsPrimary">Browser ↔ PC server</span>
+      <span class="connection-label" id="labelCloudPrimary">Server admin check</span>
+      <span class="connection-label" id="labelPrimaryBackup">Replica sync</span>
+    </div>
+    <div id="metrics"></div>
+    <div class="grid" id="dbCards"></div>
+  </section>
+  <section class="panel" id="act">
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;">
+      <input id="actFilter" placeholder="Filter activity..." style="padding:6px 9px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink);min-width:260px">
+      <span class="mut" id="actStats"></span>
+    </div>
+    <div class="scroll" style="max-height:560px"><table id="actTable"><thead><tr><th>Time</th><th>User</th><th>Server</th><th>Method</th><th>Target</th><th>Result</th><th>Detail</th></tr></thead><tbody></tbody></table></div>
+  </section>
+</main>
+<div id="login"><form class="box" id="loginForm">
+  <h2>Admin Login</h2>
+  <p class="hint">Use your website administrator account.</p>
+  <label for="u">Username</label><input id="u" autocomplete="username" required>
+  <label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password" required>
+  <div id="err"></div>
+  <div class="actions"><button type="button" id="cancelLogin">Cancel</button><button class="primary" id="go" type="submit">Sign in</button></div>
+</form></div>
+<script>
+const $=id=>document.getElementById(id);
+const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const S={base:window.location.origin,auth:"",info:null,repl:null,act:[],clients:[],nodes:[],stats:{writes:0,polls:0,errors:0},actLast:0,timer:null};
+
+async function api(path,opt={}){const r=await fetch(S.base+path,{...opt,headers:{"X-Key":S.auth,...(opt.body?{"Content-Type":"application/json"}:{}),...(opt.headers||{})}});let j=null;try{j=await r.json()}catch{}if(!r.ok)throw Error((j&&j.error)||("HTTP "+r.status));return j;}
+
+function showLogin(msg){$("login").style.display="flex";$("err").textContent=msg||"";}
+async function signIn(){
+  const username=$("u").value.trim(),password=$("pw").value;
+  try{
+    if(!username||!password)throw Error("Enter your website admin username and password.");
+    const r=await api("/admin/login",{method:"POST",body:JSON.stringify({username,password})});S.auth=r.token;
+    $("pw").value="";$("login").style.display="none";start();
+  }
+  catch(e){$("err").textContent=e.message;}
+}
+function cancelLogin(){clearInterval(S.timer);window.location.replace("/");}
+async function signOut(){clearInterval(S.timer);let warning="";try{if(S.auth)await api("/admin/logout",{method:"POST"});}catch(e){warning="Signed out locally, but the server could not revoke this session: "+e.message;}S.auth="";S.info=null;S.repl=null;S.act=[];S.clients=[];S.nodes=[];S.actLast=0;showLogin(warning);}
+async function refresh(){
+  try{
+    S.info=await api("/admin/dbinfo?detail=1");
+    S.repl=await api("/admin/replication");
+    const a=await api("/admin/activity?since="+S.actLast);
+    if(a.items.length){S.act=[...a.items.reverse(),...S.act].slice(0,300);S.actLast=a.last;}
+    S.clients=a.clients||[];
+    S.nodes=a.nodes||[];
+    S.stats=a.stats||{writes:0,polls:0,errors:0};
+    paint();
+  }catch(e){$("pMode").className="pill bad";$("pMode").textContent="Server unreachable";$("primaryStatus").textContent=e.message;$("nodePrimary").className="node offline";$("stamp").textContent="Refresh failed · "+new Date().toLocaleTimeString();}
+}
+function autoKey(){const m=/[#&]k=([^&]+)/.exec(location.hash||"");if(!m)return false;S.auth=decodeURIComponent(m[1]);history.replaceState(null,"",location.pathname);$("btnOut").style.display="none";$("login").style.display="none";start();return true;}
+function start(){refresh();clearInterval(S.timer);S.timer=setInterval(()=>{if($("autoRefresh").checked)refresh();},4000);}
+
+function paint(){
+  const i=S.info,r=S.repl;
+  if(i){$("pMode").className="pill "+(i.server.mode==="replica"?"warn":"ok");$("pMode").textContent=`server: ${i.server.mode.toUpperCase()} · term ${i.server.term}`;
+    $("nodePrimary").className="node";$("primaryTitle").textContent=`PC Project Server — ${i.server.mode.toUpperCase()}`;
+    $("primaryStatus").className="node-status ok";$("primaryStatus").textContent="Online";
+    $("primaryDetails").innerHTML=`<p>${esc(i.server.db_path.split(/[\\\\/]/).pop())} · ${formatBytes(i.server.db_size)}</p><p>${i.projects.length} project(s) · term ${esc(i.server.term)}</p><p>Port ${esc(i.server.port)} · uptime ${formatDuration(i.server.uptime)}</p>`;
+    $("nodeCloud").className="node "+(i.online_db?.connected?"":"offline");
+    $("cloudStatus").className="node-status "+(i.online_db?.connected?"ok":"bad");$("cloudStatus").textContent=i.online_db?.connected?"Connected":"Disconnected";
+    $("pCloud").className="pill "+(i.online_db?.connected?"ok":"bad");$("pCloud").textContent=i.online_db?.connected?"online DB: connected":"online DB: offline";
+    $("cloudDetails").innerHTML=`<p>${esc(i.online_db?.message||"Connection status unavailable")}</p><p>${esc(i.online_db?.url||"")}</p><p>${i.online_db?.tables?.filter(t=>t.available).length||0}/${i.online_db?.tables?.length||0} tables accessible</p>`;
+  }
+  if(r){
+    const peers=r.peers||[],online=peers.filter(p=>p.reachable).length;
+    $("pRepl").className="pill "+(peers.length&&online===peers.length&&r.in_sync?"ok":"warn");
+    $("pRepl").textContent=peers.length?`replicas: ${online}/${peers.length} reachable`:"replicas: not configured";
+    $("nodeBackup").className="node "+(peers.length&&online===peers.length?"":"pending");
+    $("backupStatus").className="node-status "+(peers.length&&online===peers.length?"ok":"warn");
+    $("backupStatus").textContent=peers.length?`${online}/${peers.length} reachable · ${r.in_sync?"in sync":"sync pending"}`:"No replicas configured";
+    $("backupDetails").innerHTML=peers.map(p=>`<div class="peer"><b>${esc(p.mode||"unknown")} · ${p.reachable?"reachable":"offline"}</b><br>${esc(p.url)} · term ${esc(p.term??"—")}</div>`).join("")||"<p>Add replica URLs in server settings to enable replication.</p>";
+    $("primaryDetails").innerHTML+=`<p>${esc(r.status)}</p>`;
+    $("linkPrimaryBackup").classList.toggle("live",online>0&&r.in_sync);
+  }
+  if(i){
+    const clients=S.clients||[],browsers=clients.filter(c=>c.kind!=="desktop"),desktop=clients.filter(c=>c.kind==="desktop");
+        $("clientStatus").className="node-status "+(browsers.length?"ok":"warn");
+        $("clientStatus").textContent=browsers.length?`${browsers.length} active browser${browsers.length===1?"":"s"}`:"Waiting for browser clients";
+        $("clientList").innerHTML=browsers.map(c=>`<p>${esc(c.name)} · ${esc(c.server||"this server")} · active ${esc(c.seconds_ago)}s ago</p>`).join("")||"<p>No browser sync requests in the last 45 seconds.</p>";
+        $("nodeDesktop").className="node "+(desktop.length?"":"pending");
+        $("desktopStatus").className="node-status "+(desktop.length?"ok":"warn");
+        $("desktopStatus").textContent=desktop.length?"Connected":"Waiting for desktop app";
+        $("desktopDetails").innerHTML=desktop.map(c=>`<p>${esc(c.name)} · ${esc(c.server||"this server")} · active ${esc(c.seconds_ago)}s ago</p>`).join("")||"<p>QC workstation and summaries sync through this PC server.</p>";
+        $("linkDesktopPrimary").classList.toggle("live",desktop.length>0);
+        $("linkClientsCloud").classList.toggle("live",browsers.length>0&&Boolean(i.online_db?.connected));
+        $("linkClientsPrimary").classList.toggle("live",browsers.length>0);
+    $("linkCloudPrimary").classList.toggle("live",Boolean(i.online_db?.connected));
+  }
+  $("stamp").textContent="Updated "+new Date().toLocaleTimeString();
+  try{if(window.parent!==window)parent.postMessage({flowHeight:document.documentElement.scrollHeight},"*");}catch(e){}
+  const onlineNodes=S.nodes.filter(n=>n.reachable).length,failedNodes=S.nodes.length-onlineNodes;
+  const nodeSummary=S.nodes.map(n=>`${n.name}: ${n.reachable?"online":`offline (${n.error||"unreachable"})`}`).join(" · ");
+  $("clusterCoverage").textContent=S.nodes.length
+    ? `Connection activity: ${onlineNodes}/${S.nodes.length} configured server(s) reachable · ${nodeSummary}`
+    : "Connection activity is local to this server. Configure its peers to include their connections.";
+  const browserCount=S.clients.filter(c=>c.kind!=="desktop").length,desktopCount=S.clients.filter(c=>c.kind==="desktop").length;
+  $("metrics").innerHTML=`<div class="metric"><b>${browserCount}</b><span>Active browser clients</span></div><div class="metric"><b>${desktopCount}</b><span>Active desktop clients</span></div><div class="metric"><b>${S.stats.writes}</b><span>Recorded writes</span></div><div class="metric"><b>${S.stats.polls}</b><span>State polls</span></div><div class="metric"><b>${S.stats.errors}</b><span>Request errors</span></div>`;
+  const localTables=i?.tables||[],cloudTables=i?.online_db?.tables||[];
+  $("dbCards").innerHTML=i?`<div class="card"><h3>Local SQLite · ${esc(i.server.db_path)}</h3><div class="scroll"><table class="database-table"><thead><tr><th>Table</th><th>Rows</th></tr></thead><tbody>${localTables.map(t=>`<tr><td>${esc(t.name)}</td><td>${esc(t.rows)}</td></tr>`).join("")||"<tr><td colspan='2'>No application tables found</td></tr>"}</tbody></table></div></div><div class="card"><h3>Online database tables</h3><div class="scroll"><table class="database-table"><thead><tr><th>Table</th><th>Status / rows</th></tr></thead><tbody>${cloudTables.map(t=>`<tr><td>${esc(t.name)}</td><td class="${t.available?"ok":"bad"}">${t.available?(t.rows==null?"Accessible · count unavailable":esc(t.rows)+" rows"):esc(t.error||"Unavailable")}</td></tr>`).join("")||"<tr><td colspan='2'>No cloud table checks returned</td></tr>"}</tbody></table></div></div><div class="card"><h3>Local projects (${i.projects.length})</h3><div class="scroll"><table><thead><tr><th>Project</th><th>Parts</th><th>Version</th></tr></thead><tbody>${i.projects.map(p=>`<tr><td><b>${esc(p.name)}</b></td><td>${p.parts}</td><td class="mono">${esc(p.version.slice(0,8))}</td></tr>`).join("")||"<tr><td colspan='3'>No projects</td></tr>"}</tbody></table></div></div>`:"";
+
+  const f=$("actFilter").value.trim().toLowerCase();
+  $("actTable").querySelector("tbody").innerHTML=S.act.filter(a=>!f||[a.who,a.server,a.method,a.path,a.detail].join(" ").toLowerCase().includes(f)).map(a=>`<tr>
+    <td>${new Date(a.ts*1000).toLocaleTimeString()}</td><td>${esc(a.who)}</td><td>${esc(a.server||"this server")}</td><td><b>${esc(a.method)}</b></td><td class="mono">${esc(a.path)}</td>
+    <td class="${a.status>=400?"bad":"ok"}">${a.status}</td><td>${esc(a.detail||"")}</td>
+  </tr>`).join("")||"<tr><td colspan='7'>No activity recorded</td></tr>";
+}
+document.querySelectorAll("#tabs button").forEach(b=>b.onclick=()=>{document.querySelectorAll("#tabs button").forEach(x=>x.classList.toggle("on",x===b));document.querySelectorAll(".panel").forEach(p=>p.classList.toggle("on",p.id===b.dataset.p));});
+function formatBytes(n){if(n<1024)return n+" B";if(n<1024*1024)return (n/1024).toFixed(1)+" KB";return (n/1024/1024).toFixed(1)+" MB";}
+function formatDuration(s){s=Math.max(0,Math.floor(Number(s)||0));const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);return h?`${h}h ${m}m`:`${m}m ${s%60}s`;}
+$("loginForm").addEventListener("submit",e=>{e.preventDefault();signIn();});
+$("cancelLogin").onclick=cancelLogin;
+$("btnRefresh").onclick=refresh;
+$("btnOut").onclick=signOut;
+$("actFilter").addEventListener("input",()=>{if(S.info)paint();});
+if(!autoKey())$("u").focus();
+</script>
+</body>
+</html>
+"""
 
 # ---- The website itself (index.html) is served by this server, so any address of the server opens the site ----
 WEBSITE_DIR = os.path.join(DATA_DIR, "website")
