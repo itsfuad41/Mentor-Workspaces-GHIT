@@ -224,6 +224,7 @@ th{color:var(--mut);font-weight:700;font-size:12px;position:sticky;top:0;backgro
           <span class="mut">Keep copies for</span>
           <select id="keepDays" style="width:auto"><option value="0">Forever</option><option value="90">90 days</option><option value="180">180 days</option><option value="365">1 year</option><option value="730">2 years</option></select>
         </div>
+        <div class="switch" style="margin:0 0 12px"><label class="tgl"><input type="checkbox" id="swFresh"><i></i></label><span><b>New day, new Excel.</b> At midnight every project starts empty for the new day; yesterday's work stays in the date box.</span></div>
         <div class="scroll"><table><thead><tr><th>Day</th><th>Projects</th><th>Edited that day</th><th>Total parts</th></tr></thead><tbody id="daysBody"></tbody></table></div>
       </div>
     </section>
@@ -403,7 +404,7 @@ function paint(){
   $("peers").innerHTML=s.peers.map(p=>`<div class="linkrow"><span class="pill ${p.reachable?"ok":"bad"}">${p.reachable?"online":"offline"}</span><code>${esc(p.url)}</code><span class="mut">${esc(p.mode)}</span><button class="small" data-peer="${esc(p.url)}">Remove</button></div>`).join("")||`<div class="mut">No replicas yet.</div>`;
   $("backupBody").innerHTML=(s.backups||[]).map(b=>`<tr><td class="mono">${esc(b.name)}</td><td>${fmtBytes(b.size)}</td><td>${esc(b.time)}</td></tr>`).join("")||`<tr><td colspan="3" class="mut">No backups yet.</td></tr>`;
   $("dataDir").textContent=sv.data_dir;
-  if(!S.formsFilled){S.formsFilled=true;$("cfToken").value=s.named.token_saved?"••••••••":"";$("cfToken").dataset.saved=s.named.token_saved?"1":"";$("cfUrl").value=s.named.public_url;$("customUrl").value=s.links.custom;$("portInput").value=sv.port;$("keepDays").value=String(s.snapshot_keep_days||0);}
+  if(!S.formsFilled){S.formsFilled=true;$("cfToken").value=s.named.token_saved?"••••••••":"";$("cfToken").dataset.saved=s.named.token_saved?"1":"";$("cfUrl").value=s.named.public_url;$("customUrl").value=s.links.custom;$("portInput").value=sv.port;$("keepDays").value=String(s.snapshot_keep_days||0);$("swFresh").checked=s.daily_fresh_start!==false;}
   $("swTempAuto").checked=s.temp_auto;$("swCfAuto").checked=s.named.auto;$("swFunAuto").checked=s.funnel.auto;
 }
 async function refresh(){
@@ -441,6 +442,7 @@ $("openBackups").onclick=()=>act(null,()=>api("/api/open",{what:"backups"}));
 $("swTempAuto").onchange=e=>act(null,()=>api("/api/settings",{temp_link_auto:e.target.checked}));
 $("swCfAuto").onchange=e=>act(null,()=>api("/api/settings",{cloudflare_auto:e.target.checked}));
 $("swFunAuto").onchange=e=>act(null,()=>api("/api/settings",{auto_tunnel:e.target.checked}));
+$("swFresh").onchange=e=>act(null,()=>api("/api/settings",{daily_fresh_start:e.target.checked}),"Saved");
 $("keepDays").onchange=e=>act(null,()=>api("/api/settings",{snapshot_keep_days:+e.target.value}),"Saved");
 $("cfSave").onclick=e=>{const t=$("cfToken").value.trim();act(e.target,async()=>{await api("/api/named/save",{token:t==="••••••••"?null:t,url:$("cfUrl").value});},"Saved");};
 $("cfBtn").onclick=e=>act(e.target,()=>api(S.st.named.running?"/api/named/stop":"/api/named/start",{}));

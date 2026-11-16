@@ -178,6 +178,8 @@ class Panel:
             cfg["code_url"] = url
             core.save_config(cfg)
             self.rt._check_links()
+        if "daily_fresh_start" in body:
+            cfg["daily_fresh_start"] = bool(body["daily_fresh_start"])
         if "snapshot_keep_days" in body:
             days = int(body["snapshot_keep_days"] or 0)
             if days < 0:

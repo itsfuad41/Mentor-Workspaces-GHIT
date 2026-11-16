@@ -2256,6 +2256,16 @@ document.querySelectorAll("table").forEach(table => {
     let orig=null;try{orig=eval(n)}catch(e){}if(typeof orig!=="function")return;
     window[n]=async function(...a){if(H.active)await window.backToToday();return orig.apply(this,a);};
   });
+  /* New day, new Excel: an empty project on today's date shows what to do next */
+  function newDayHint(){
+    let el=document.getElementById("newDayHint");
+    if(!el){el=document.createElement("div");el.id="newDayHint";el.style.cssText="margin:10px 14px 0;padding:10px 14px;border:1px solid #f0c36d;background:#fff8e6;color:#7a5200;border-radius:8px;font-weight:600";document.querySelector("header").insertAdjacentElement("afterend",el);}
+    let empty=false;try{empty=!H.active&&!!project()&&parts().length===0;}catch(e){}
+    el.hidden=!empty;
+    if(empty)el.textContent="New day — this project is empty. Upload today's Excel to start today's work. Earlier days stay available from the date box.";
+  }
+  if(typeof refreshUi==="function"){const _r=refreshUi;refreshUi=function(){const r=_r.apply(this,arguments);try{newDayHint();}catch(e){}return r;};}
+  setTimeout(()=>{try{newDayHint();}catch(e){}},1500);
 })();
 </script>
 

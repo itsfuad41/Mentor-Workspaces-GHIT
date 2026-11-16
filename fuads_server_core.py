@@ -138,6 +138,8 @@ def load_config():
         ("cloudflare_auto", False),
         ("temp_link_auto", False),
         ("snapshot_keep_days", 0),
+        ("daily_fresh_start", True),
+        ("rollover_day", ""),
         ("auto_promote_after", 60),
         ("backup_hours", 24),
         ("backup_keep", 30),
@@ -414,6 +416,41 @@ def snapshot_put(day, project, parts, by=""):
             conn.close()
     return len(parts)
 
+def daily_rollover():
+    """New day = new Excel = new work. When the date changes, yesterday's finished state is kept as that day's copy
+    (still open from the website's date box, editable there until that day's Mentor Summary is submitted) and the live
+    projects start empty for today. Clearing gives every project a new epoch, so a browser that is still holding
+    yesterday's rows can no longer write them back into the new day. Returns how many projects were reset."""
+    cfg = load_config()
+    if cfg.get("mode") == "replica" or not cfg.get("daily_fresh_start", True):
+        return 0
+    today, last = _today(), str(cfg.get("rollover_day") or "")
+    if last == today:
+        return 0
+    cleared = 0
+    if last and last < today:
+        empty_version = hashlib.md5(b"[]").hexdigest()
+        with _write_lock:
+            conn = _db()
+            try:
+                for r in conn.execute("SELECT name, parts, part_count, updated_by, updated_at FROM projects").fetchall():
+                    if not r["part_count"]:
+                        continue
+                    # make sure the day that is ending has its copy (INSERT OR IGNORE keeps real edits untouched)
+                    conn.execute("INSERT OR IGNORE INTO daily_snapshots (day, project, parts, part_count, updated_at, updated_by, edited) VALUES (?,?,?,?,?,?,0)",
+                                 (last, r["name"], zlib.compress(r["parts"].encode("utf-8"), 6), r["part_count"], r["updated_at"] or _now(), r["updated_by"] or ""))
+                    conn.execute("UPDATE projects SET parts='[]', part_count=0, version=?, updated_at=?, updated_by=?, epoch=? WHERE name=?",
+                                 (empty_version, _now(), "New day", uuid.uuid4().hex, r["name"]))
+                    cleared += 1
+                conn.commit()
+            finally:
+                conn.close()
+        log(f"New day {today}: {cleared} project(s) started empty; {last}'s work is kept in the daily copies.")
+    cfg = load_config()
+    cfg["rollover_day"] = today   # first run after an update only records the day (nothing is cleared mid-day)
+    save_config(cfg)
+    return cleared
+
 def snapshot_all(force=False):
     """Make sure every project has a copy for today (days nobody edited still get a copy).
     force=True also refreshes copies that already exist. Returns how many were written."""
@@ -425,6 +462,8 @@ def snapshot_all(force=False):
         try:
             have = {r["project"] for r in conn.execute("SELECT project FROM daily_snapshots WHERE day=?", (_today(),)).fetchall()}
             for r in conn.execute("SELECT name, parts, part_count, updated_by FROM projects").fetchall():
+                if not r["part_count"] and r["name"] not in have:
+                    continue  # nothing uploaded yet today: no empty copy
                 if force or r["name"] not in have:
                     _snapshot_write(conn, r["name"], r["parts"], r["part_count"] or 0, r["updated_by"], edited=False)
                     written += 1
@@ -529,6 +568,7 @@ def _snapshot_loop():
     last_prune = ""
     while True:
         try:
+            daily_rollover()
             snapshot_all()
             if last_prune != _today():
                 prune_snapshots()
@@ -2419,5 +2459,6 @@ class Runtime:
                        "mode": REPLICATOR.peer_states.get(p["url"].rstrip("/"), {}).get("mode", "?")} for p in cfg.get("peers", [])],
             "replication": {"status": REPLICATOR.status, "in_sync": REPLICATOR.in_sync},
             "snapshot_keep_days": int(cfg.get("snapshot_keep_days") or 0),
+            "daily_fresh_start": bool(cfg.get("daily_fresh_start", True)),
             "site": website_info(),
         }
