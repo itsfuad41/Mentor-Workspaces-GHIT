@@ -141,6 +141,24 @@ class Panel:
             self.rt.temp.stop()
         return {"ok": True}
 
+    def ngrok_save(self, body):
+        cfg = core.load_config()
+        token = body.get("token")
+        token = cfg.get("ngrok_token", "") if token is None else str(token).strip()
+        if token.lower().startswith("ngrok"):
+            token = token.split()[-1]           # pasted the whole "ngrok config add-authtoken <token>" line
+        domain = core.re.sub(r"^https?://", "", str(body.get("domain") or "").strip()).rstrip("/")
+        if token and not domain:
+            raise ApiError("Enter your ngrok domain too, like your-name.ngrok-free.dev")
+        if domain and "." not in domain:
+            raise ApiError("The domain should look like your-name.ngrok-free.dev")
+        cfg["ngrok_token"], cfg["ngrok_domain"] = token, domain
+        if not core.save_config(cfg):
+            raise ApiError("Could not save the settings to " + core.CONFIG_PATH)
+        if self.rt.ngrok.running:
+            self.rt.ngrok.stop()
+        return {"ok": True}
+
     def named_save(self, body):
         cfg = core.load_config()
         token, url = body.get("token"), str(body.get("url") or "").strip().rstrip("/")
@@ -167,7 +185,7 @@ class Panel:
 
     def settings(self, body):
         cfg = core.load_config()
-        for key in ("temp_link_auto", "cloudflare_auto", "auto_tunnel"):
+        for key in ("temp_link_auto", "cloudflare_auto", "auto_tunnel", "ngrok_auto"):
             if key in body:
                 cfg[key] = bool(body[key])
         if "custom_url" in body:
@@ -354,6 +372,9 @@ def make_handler(panel):
                     "/api/server/stop": lambda: panel.server_stop(token, b),
                     "/api/temp/start": lambda: panel.temp(True),
                     "/api/temp/stop": lambda: panel.temp(False),
+                    "/api/ngrok/save": lambda: panel.ngrok_save(b),
+                    "/api/ngrok/start": lambda: (panel.rt.start_ngrok(), {"ok": True})[1],
+                    "/api/ngrok/stop": lambda: (panel.rt.ngrok.stop(), {"ok": True})[1],
                     "/api/named/save": lambda: panel.named_save(b),
                     "/api/named/start": lambda: (panel.rt.start_named(), {"ok": True})[1],
                     "/api/named/stop": lambda: (panel.rt.named.stop(), {"ok": True})[1],

@@ -189,6 +189,15 @@ th{color:var(--mut);font-weight:700;font-size:12px;position:sticky;top:0;backgro
           <div class="switch"><label class="tgl"><input type="checkbox" id="swTempAuto"><i></i></label><span>Start it automatically when the app starts</span></div>
         </div>
         <div class="card">
+          <h3>ngrok &mdash; free permanent address <span class="pill idle" id="ngrokPill">off</span></h3>
+          <p class="sub">Free and it never changes. At ngrok.com make a free account, open <b>Domains</b> to get your free domain, and copy your <b>Authtoken</b>.</p>
+          <label for="ngToken">Authtoken</label><input id="ngToken" type="password" placeholder="paste your ngrok authtoken">
+          <label for="ngDomain">Your free domain</label><input id="ngDomain" placeholder="your-name.ngrok-free.dev">
+          <div id="ngrokMsg" class="notice" hidden></div>
+          <div class="row"><button id="ngSave">Save</button><button id="ngBtn" class="primary">Start ngrok</button></div>
+          <div class="switch"><label class="tgl"><input type="checkbox" id="swNgAuto"><i></i></label><span>Start it automatically</span></div>
+        </div>
+        <div class="card">
           <h3>My Cloudflare tunnel <span class="pill idle" id="namedPill">off</span></h3>
           <p class="sub">Your own permanent address. In Cloudflare Zero Trust &rarr; Networks &rarr; Tunnels, add a Public Hostname pointing to <span class="mono" id="namedTarget"></span>.</p>
           <label for="cfToken">Tunnel token</label><input id="cfToken" type="password" placeholder="paste the token (or the whole 'cloudflared service install …' line)">
@@ -403,7 +412,7 @@ function paint(){
   if(!S.autoFilled){S.autoFilled=true;$("swAuto").checked=up.auto!==false;}
   // website
   const site=s.site;pill($("sitePill"),site.available&&run?"ok":"bad",!site.available?"no file":run?"served":"server stopped");
-  const addrs=[...(s.temp.state==="connected"&&s.temp.url?[["Temporary link",s.temp.url]]:[]),...(s.named.state==="connected"&&s.named.public_url?[["My tunnel",s.named.public_url]]:[]),...(s.links.custom?[["Permanent",s.links.custom]]:[]),...s.links.lan.map(u=>["Local network",u]),["This PC",s.links.local]];
+  const addrs=[...(s.temp.state==="connected"&&s.temp.url?[["Temporary link",s.temp.url]]:[]),...(s.ngrok.state==="connected"&&s.ngrok.url?[["ngrok",s.ngrok.url]]:[]),...(s.named.state==="connected"&&s.named.public_url?[["My tunnel",s.named.public_url]]:[]),...(s.links.custom?[["Permanent",s.links.custom]]:[]),...s.links.lan.map(u=>["Local network",u]),["This PC",s.links.local]];
   $("siteLinks").innerHTML=site.available?addrs.map(([n,u])=>`<div class="linkrow"><span class="mut" style="width:104px">${esc(n)}</span><code>${esc(u)}/</code><button class="small" data-copy="${esc(u)}/">Copy</button></div>`).join(""):"";
   note($("siteMsg"),site.available?`Website file: ${site.custom?"your copy in the data folder":"the one that came with the app"} · ${fmtBytes(site.size)} · updated ${site.modified}`:"No index.html found. Click 'Update website file…' and put your index.html in the folder that opens.",site.available?"info":"err");
   $("siteOpen").disabled=!site.available||!run;
@@ -411,6 +420,8 @@ function paint(){
   tunnelView(s.temp,$("tmpPill"),$("tmpUrl"),$("tmpMsg"),$("tmpBtn"),$("tmpCopy"),"Start temporary link","Stop temporary link");
   tunnelView(s.temp,$("c-tmpPill"),$("c-tmpUrl"),$("c-tmpMsg"),$("c-tmpBtn"),$("c-tmpCopy"),"Start temporary link","Stop temporary link");
   tunnelView(s.named,$("namedPill"),null,$("namedMsg"),$("cfBtn"),null,"Start tunnel","Stop tunnel");
+  tunnelView(s.ngrok,$("ngrokPill"),null,$("ngrokMsg"),$("ngBtn"),null,"Start ngrok","Stop ngrok");
+  if(!S.ngFilled){S.ngFilled=true;$("ngToken").value=s.ngrok.token_saved?"••••••••":"";$("ngDomain").value=s.ngrok.domain;$("swNgAuto").checked=s.ngrok.auto;}
   $("namedTarget").textContent=`http://127.0.0.1:${sv.port}`;
   const f=s.funnel;pill($("funPill"),f.active?"ok":f.error?"bad":"idle",f.active?"on":f.error?"problem":"off");
   note($("funMsg"),!f.installed?"Tailscale is not installed on this PC.":f.error,"err");$("funDl").hidden=f.installed;
@@ -468,6 +479,9 @@ $("swAuto").onchange=e=>act(null,()=>api("/api/settings",{auto_update:e.target.c
 $("swFresh").onchange=e=>act(null,()=>api("/api/settings",{daily_fresh_start:e.target.checked}),"Saved");
 $("keepDays").onchange=e=>act(null,()=>api("/api/settings",{snapshot_keep_days:+e.target.value}),"Saved");
 $("cfSave").onclick=e=>{const t=$("cfToken").value.trim();act(e.target,async()=>{await api("/api/named/save",{token:t==="••••••••"?null:t,url:$("cfUrl").value});},"Saved");};
+$("ngSave").onclick=e=>{const t=$("ngToken").value.trim();act(e.target,()=>api("/api/ngrok/save",{token:t==="••••••••"?null:t,domain:$("ngDomain").value}),"ngrok saved");};
+$("ngBtn").onclick=e=>act(e.target,()=>api(S.st.ngrok.running?"/api/ngrok/stop":"/api/ngrok/start",{}));
+$("swNgAuto").onchange=e=>act(null,()=>api("/api/settings",{ngrok_auto:e.target.checked}),"Saved");
 $("cfBtn").onclick=e=>act(e.target,()=>api(S.st.named.running?"/api/named/stop":"/api/named/start",{}));
 $("funBtn").onclick=e=>act(e.target,()=>api(S.st.funnel.active?"/api/funnel/off":"/api/funnel/on",{}),S.st&&S.st.funnel.active?"Funnel off":"Funnel on");
 $("customSave").onclick=e=>act(e.target,()=>api("/api/settings",{custom_url:$("customUrl").value}),"Address saved");

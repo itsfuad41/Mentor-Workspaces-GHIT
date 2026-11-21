@@ -138,6 +138,9 @@ def load_config():
         ("cloudflare_url", ""),
         ("cloudflare_auto", False),
         ("temp_link_auto", False),
+        ("ngrok_token", ""),
+        ("ngrok_domain", ""),
+        ("ngrok_auto", False),
         ("snapshot_keep_days", 0),
         ("daily_fresh_start", True),
         ("auto_update", True),
@@ -157,6 +160,11 @@ def load_config():
     _CFG = cfg
     return cfg
 
+def ngrok_public_url(cfg):
+    d = str(cfg.get("ngrok_domain") or "").strip().rstrip("/")
+    d = re.sub(r"^https?://", "", d)
+    return ("https://" + d) if d else ""
+
 def public_base_url(cfg):
     """Stable public address: Tailscale/custom URL first, else the user's own Cloudflare tunnel address."""
     custom = str(cfg.get("custom_url") or "").strip().rstrip("/")
@@ -164,12 +172,12 @@ def public_base_url(cfg):
         return custom
     if cfg.get("cloudflare_token") and cfg.get("cloudflare_url"):
         return str(cfg["cloudflare_url"]).strip().rstrip("/")
-    return ""
+    return str(ngrok_public_url(cfg) or "")
 
 def url_alive(url, timeout=4):
     """True when `url` really reaches a running Fuad's Server right now (a saved link can be dead, e.g. a stopped Funnel)."""
     try:
-        req = urllib.request.Request(url.rstrip("/") + "/health", headers={"User-Agent": "FuadServer/3"})
+        req = urllib.request.Request(url.rstrip("/") + "/health", headers={"User-Agent": "FuadServer/3", "ngrok-skip-browser-warning": "1"})
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return r.status == 200
     except Exception:  # noqa: BLE001
@@ -1098,7 +1106,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def _cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "X-Key, X-Who, X-Client, Content-Type, Authorization")
+        self.send_header("Access-Control-Allow-Headers", "X-Key, X-Who, X-Client, Content-Type, Authorization, ngrok-skip-browser-warning")
         self.send_header("Access-Control-Allow-Methods", "GET, PUT, PATCH, DELETE, OPTIONS, POST")
 
     def _send(self, code, obj, raw=None):
@@ -1866,6 +1874,180 @@ def download_cloudflared(progress=None):
             f"{os.path.basename(url)} from github.com/cloudflare/cloudflared/releases, rename it to {name} and put it in {DATA_DIR}."
         ) from error
 
+NGROK_URLS = {
+    "win": "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip",
+    "linux": "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz",
+}
+
+def ngrok_executable():
+    found = shutil.which("ngrok")
+    if found:
+        return found
+    name = "ngrok.exe" if IS_WINDOWS else "ngrok"
+    for base in (DATA_DIR, os.path.dirname(os.path.abspath(sys.executable if getattr(sys, "frozen", False) else __file__)), getattr(sys, "_MEIPASS", None)):
+        if base:
+            local = os.path.join(base, name)
+            if os.path.isfile(local):
+                return local
+    return None
+
+def download_ngrok(progress=None):
+    """Download ngrok's official helper into the data folder (one time). Raises RuntimeError with a plain message."""
+    import zipfile, tarfile, io
+    name = "ngrok.exe" if IS_WINDOWS else "ngrok"
+    url = NGROK_URLS["win" if IS_WINDOWS else "linux"]
+    dest = os.path.join(DATA_DIR, name)
+    try:
+        request = urllib.request.Request(url, headers={"User-Agent": "FuadsServer/3.0"})
+        buf = io.BytesIO()
+        with urllib.request.urlopen(request, timeout=90) as response:
+            total, got = int(response.headers.get("Content-Length") or 0), 0
+            while True:
+                chunk = response.read(262144)
+                if not chunk:
+                    break
+                buf.write(chunk)
+                got += len(chunk)
+                if progress:
+                    progress(got, total)
+        buf.seek(0)
+        if IS_WINDOWS:
+            with zipfile.ZipFile(buf) as z:
+                data = z.read("ngrok.exe")
+        else:
+            with tarfile.open(fileobj=buf, mode="r:gz") as t:
+                data = t.extractfile("ngrok").read()
+        if len(data) < 5_000_000 or (IS_WINDOWS and data[:2] != b"MZ"):
+            raise RuntimeError("the downloaded file is not the ngrok program")
+        tmp = dest + ".part"
+        with open(tmp, "wb") as fh:
+            fh.write(data)
+        os.replace(tmp, dest)
+        if not IS_WINDOWS:
+            os.chmod(dest, 0o755)
+        log(f"Downloaded ngrok to {dest}")
+        return dest
+    except Exception as error:  # noqa: BLE001
+        raise RuntimeError(f"Could not download ngrok: {error}. Download it from ngrok.com/download, and put {name} in {DATA_DIR}.") from error
+
+class NgrokTunnel:
+    """Your free permanent ngrok address (the static domain from the ngrok dashboard). start() never blocks or raises:
+    look at .state ('idle','downloading','starting','connected','error'), .url, .error, .detail."""
+
+    def __init__(self):
+        self.proc = None
+        self.url = None
+        self.error = ""
+        self.detail = ""
+        self.state = "idle"
+        self.tail = deque(maxlen=14)
+        self._gen = 0
+        self._lock = threading.Lock()
+
+    @property
+    def running(self):
+        return self.state in ("downloading", "starting", "connected")
+
+    def start(self, port, token, domain):
+        with self._lock:
+            if self.running:
+                return
+            self._gen += 1
+            gen = self._gen
+            self.url, self.error, self.detail, self.state = None, "", "Starting...", "starting"
+            self.tail.clear()
+        threading.Thread(target=self._boot, args=(gen, port, token, domain), daemon=True).start()
+
+    @staticmethod
+    def explain(text):
+        low = (text or "").lower()
+        if "err_ngrok_105" in low or "authtoken" in low and ("invalid" in low or "not valid" in low):
+            return "ngrok does not accept this authtoken. Copy it again from dashboard.ngrok.com/get-started/your-authtoken."
+        if "err_ngrok_314" in low or "domain" in low and ("not found" in low or "reserved" in low or "not allowed" in low):
+            return "ngrok says this domain is not on your account. Copy it exactly from dashboard.ngrok.com/domains (it ends in .ngrok-free.dev or .ngrok-free.app)."
+        if "err_ngrok_334" in low or "already online" in low:
+            return "This ngrok domain is already online somewhere else (another PC or another ngrok window). Close that one first."
+        if "lookup" in low or "no such host" in low or "timeout" in low or "unreachable" in low:
+            return "ngrok could not be reached. Check the internet connection and try again."
+        return "ngrok stopped: " + (text or "")[-200:]
+
+    def _fail(self, gen, message):
+        if gen != self._gen:
+            return
+        self.error, self.state, self.url = message, "error", None
+        log(f"ngrok problem: {message}")
+
+    def _boot(self, gen, port, token, domain):
+        exe = ngrok_executable()
+        if not exe:
+            self.state, self.detail = "downloading", "Downloading ngrok (one time, ~30 MB)..."
+            try:
+                exe = download_ngrok(lambda got, total: setattr(self, "detail", f"Downloading ngrok... {got // 1048576} MB" + (f" of {total // 1048576} MB" if total else "")))
+            except RuntimeError as error:
+                return self._fail(gen, str(error))
+            if gen != self._gen:
+                return
+            self.state, self.detail = "starting", "Starting..."
+        host = re.sub(r"^https?://", "", str(domain).strip()).rstrip("/")
+        cfg_dir = os.path.join(DATA_DIR, "ngrok_home")
+        os.makedirs(cfg_dir, exist_ok=True)
+        # the authtoken goes through the environment, so it never shows in the process list; own config folder keeps old setups out of the way
+        env = dict(os.environ, NGROK_AUTHTOKEN=str(token).strip(), HOME=cfg_dir, USERPROFILE=cfg_dir, XDG_CONFIG_HOME=cfg_dir, LOCALAPPDATA=cfg_dir)
+        cmd = [exe, "http", f"127.0.0.1:{port}", f"--url=https://{host}", "--log=stdout", "--log-format=logfmt"]
+        try:
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace",
+                                    creationflags=_no_window_flags(), env=env, stdin=subprocess.DEVNULL)
+        except OSError as error:
+            return self._fail(gen, f"Could not start ngrok: {error}")
+        if gen != self._gen:
+            proc.terminate()
+            return
+        self.proc = proc
+        threading.Thread(target=self._read, args=(gen, proc, host), daemon=True).start()
+        threading.Thread(target=self._watch, args=(gen, proc), daemon=True).start()
+
+    def _watch(self, gen, proc):
+        deadline = time.time() + 45
+        while time.time() < deadline:
+            if gen != self._gen or self.state != "starting":
+                return
+            time.sleep(1)
+        if gen == self._gen and self.state == "starting":
+            self._fail(gen, "No answer from ngrok after 45 seconds. " + self.explain(self.tail[-1] if self.tail else "timeout"))
+            try:
+                proc.terminate()
+            except OSError:
+                pass
+
+    def _read(self, gen, proc, host):
+        for line in proc.stdout:
+            if gen != self._gen:
+                return
+            line = line.rstrip()
+            if line:
+                self.tail.append(line)
+            low = line.lower()
+            if "started tunnel" in low and self.state != "connected":
+                self.url = f"https://{host}"
+                self.state, self.detail = "connected", "Connected"
+                log(f"ngrok connected: {self.url}")
+            elif ("lvl=eror" in low or "err_ngrok" in low or "authentication failed" in low) and self.state != "connected":
+                self.error = self.explain(line)
+        if gen == self._gen and self.state != "idle":
+            self._fail(gen, ("The ngrok link dropped. " if self.state == "connected" else "ngrok stopped before connecting. ") +
+                       (self.error or self.explain(self.tail[-1] if self.tail else "")))
+
+    def stop(self):
+        with self._lock:
+            self._gen += 1
+            proc, self.proc = self.proc, None
+            self.url, self.state, self.error, self.detail = None, "idle", "", ""
+        if proc:
+            try:
+                proc.terminate()
+            except OSError:
+                pass
+
 class Tunnel:
     """Cloudflare tunnel. Quick mode = temporary trycloudflare.com link.
     Named mode = the user's own tunnel (token from the Cloudflare dashboard) on their own address.
@@ -2284,13 +2466,14 @@ class Runtime:
         self.server = ServerCore()
         self.temp = Tunnel()
         self.named = Tunnel()
+        self.ngrok = NgrokTunnel()
         self.funnel_active = False
         self.funnel_error = ""
         self.want_server = True
         self.start_error = ""
         self.booted = False
         self._stop = threading.Event()
-        self._next = {"server": 0.0, "named": 0.0, "temp": 0.0, "funnel": 0.0, "links": 0.0}
+        self._next = {"server": 0.0, "named": 0.0, "temp": 0.0, "funnel": 0.0, "links": 0.0, "ngrok": 0.0}
         self.link_live = {}   # url -> bool, refreshed in the background
 
     def boot(self):
@@ -2320,6 +2503,7 @@ class Runtime:
         self.want_server = False
         self.temp.stop()
         self.named.stop()
+        self.ngrok.stop()
         self._funnel_off()
         self.server.stop()
 
@@ -2335,6 +2519,14 @@ class Runtime:
         if not self.server.running:
             raise RuntimeError("Start the server first.")
         self.named.start(self.server.port, cfg["cloudflare_token"], cfg.get("cloudflare_url"))
+
+    def start_ngrok(self):
+        cfg = load_config()
+        if not cfg.get("ngrok_token") or not cfg.get("ngrok_domain"):
+            raise RuntimeError("Save your ngrok authtoken and domain first.")
+        if not self.server.running:
+            raise RuntimeError("Start the server first.")
+        self.ngrok.start(self.server.port, cfg["ngrok_token"], cfg["ngrok_domain"])
 
     def funnel_on(self):
         if not self.server.running:
@@ -2382,6 +2574,8 @@ class Runtime:
                 if self.server.running:
                     if cfg.get("cloudflare_token") and cfg.get("cloudflare_auto") and not self.named.running and self._due("named", 30):
                         self.start_named()
+                    if cfg.get("ngrok_token") and cfg.get("ngrok_domain") and cfg.get("ngrok_auto") and not self.ngrok.running and self._due("ngrok", 30):
+                        self.start_ngrok()
                     if cfg.get("temp_link_auto") and not cfg.get("cloudflare_token") and not self.temp.running and self._due("temp", 60):
                         self.start_temp()
                     if cfg.get("auto_tunnel") and tailscale_executable() and self._due("funnel", 60):
@@ -2407,6 +2601,8 @@ class Runtime:
             out.append(("Pasted link", cfg["code_url"].strip().rstrip("/")))
         if str(cfg.get("custom_url") or "").strip():
             out.append(("Permanent link", cfg["custom_url"].strip().rstrip("/")))
+        if str(cfg.get("ngrok_domain") or "").strip():
+            out.append(("ngrok link", ngrok_public_url(cfg)))
         if cfg.get("cloudflare_token") and cfg.get("cloudflare_url"):
             out.append(("My tunnel", str(cfg["cloudflare_url"]).strip().rstrip("/")))
         if self.temp.state == "connected" and self.temp.url:
@@ -2452,6 +2648,7 @@ class Runtime:
             "links": {"local": f"http://127.0.0.1:{port}", "lan": [f"http://{a}:{port}" for a in lan_addresses()],
                       "custom": cfg.get("custom_url", ""), "best": self.best_url(cfg)},
             "temp": tun(self.temp),
+            "ngrok": {**tun(self.ngrok), "token_saved": bool(cfg.get("ngrok_token")), "domain": cfg.get("ngrok_domain", ""), "auto": bool(cfg.get("ngrok_auto"))},
             "named": {**tun(self.named), "token_saved": bool(cfg.get("cloudflare_token")), "public_url": cfg.get("cloudflare_url", ""), "auto": bool(cfg.get("cloudflare_auto"))},
             "funnel": {"active": self.funnel_active or bool(cfg.get("tailscale_funnel")), "error": self.funnel_error, "installed": tailscale_executable() is not None, "auto": bool(cfg.get("auto_tunnel"))},
             "temp_auto": bool(cfg.get("temp_link_auto")),
