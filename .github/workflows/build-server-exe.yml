@@ -29,12 +29,12 @@ jobs:
       - name: Install build tools (PyInstaller bootloader compiled from source)
         shell: pwsh
         run: |
-          python -m pip install --upgrade pip pystray pillow pywebview
+          python -m pip install --upgrade --upgrade-strategy eager pip setuptools wheel pystray pillow pywebview
           # The stock PyInstaller bootloader is the most common reason for antivirus false alarms: build our own.
-          python -m pip install --no-binary pyinstaller pyinstaller
+          python -m pip install --upgrade --no-binary pyinstaller pyinstaller
           if ($LASTEXITCODE -ne 0) {
             Write-Warning "Could not compile the bootloader; using the prebuilt PyInstaller."
-            python -m pip install pyinstaller
+            python -m pip install --upgrade pyinstaller
           }
 
       - name: Stamp version and write exe version info
