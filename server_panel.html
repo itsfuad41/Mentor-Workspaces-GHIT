@@ -116,6 +116,7 @@ th{color:var(--mut);font-weight:700;font-size:12px;position:sticky;top:0;backgro
     <nav id="nav">
       <button data-p="overview" class="on"><span class="ic">&#9673;</span>Overview</button>
       <button data-p="connect"><span class="ic">&#128279;</span>Connections</button>
+      <button data-p="ws"><span class="ic">&#128451;</span>Projects &amp; SQL</button>
       <button data-p="flow"><span class="ic">&#128760;</span>Workflows</button>
       <button data-p="days"><span class="ic">&#128197;</span>Daily copies</button>
       <button data-p="backup"><span class="ic">&#128451;</span>Backup &amp; replicas</button>
@@ -259,6 +260,57 @@ th{color:var(--mut);font-weight:700;font-size:12px;position:sticky;top:0;backgro
     </section>
 
     <!-- ACTIVITY -->
+    <section class="page" id="p-ws">
+      <div class="card">
+        <h3>Projects <span class="mut" style="font-weight:400">&mdash; one server, one address, one database per project</span></h3>
+        <p class="sub">Every project gets its own database file and its own keys, but they all use this server&rsquo;s single tunnel address. Websites reach a project at <code>&lt;your address&gt;/w/&lt;project&gt;</code>.</p>
+        <div id="wsList"></div>
+        <form id="wsForm" class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">
+          <input id="wsName" placeholder="Project name, e.g. couple-secrets" style="flex:2;min-width:180px" required>
+          <select id="wsType" style="flex:1;min-width:170px"><option value="database">New database</option><option value="app">App already on this PC</option></select>
+          <input id="wsPort" type="number" placeholder="Port, e.g. 3000" style="flex:1;min-width:120px" hidden>
+          <button class="primary" id="wsAdd">Add project</button>
+        </form>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <h3>Table editor</h3>
+        <p class="sub">Browse and edit rows like a spreadsheet. Click a cell to change it, press Enter to save.</p>
+        <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:8px">
+          <select id="teDb" style="max-width:240px"></select>
+          <button class="small" id="teNew">+ New table</button>
+          <input id="teSearch" placeholder="Search rows…" style="max-width:220px">
+          <span style="flex:1"></span><button class="small" id="teDrop">Delete table</button><button class="small" id="teAddRow">+ Add row</button>
+        </div>
+        <div id="teNewBox" hidden style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px">
+          <div style="display:flex;gap:8px"><input id="tnName" placeholder="Table name, e.g. messages"><button class="small" id="tnCol">+ Column</button><button class="primary small" id="tnSave">Create table</button></div>
+          <div id="tnCols" style="margin-top:8px"></div>
+          <div class="mut" style="font-size:12px;margin-top:4px">An <b>id</b> and a <b>created_at</b> column are added automatically.</div>
+        </div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <div id="teTables" style="min-width:160px;max-width:200px"></div>
+          <div style="flex:1;min-width:260px"><div id="teGrid" style="overflow:auto;max-height:420px"></div>
+            <div class="row" style="gap:8px;margin-top:6px"><span class="mut" id="teInfo" style="flex:1"></span><button class="small" id="tePrev">&larr;</button><button class="small" id="teNext">&rarr;</button></div></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <h3>Use it from a website</h3>
+        <p class="sub">Every table gets a ready API. Pick a project and table above, then copy this into your site.</p>
+        <textarea id="apiDoc" readonly spellcheck="false" style="height:150px;font-family:ui-monospace,Consolas,monospace;font-size:12px"></textarea>
+        <div style="margin-top:6px"><button class="small" id="apiCopy">Copy</button></div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <h3>SQL console</h3>
+        <p class="sub">Works on any project&rsquo;s database. It only reads unless you tick &ldquo;Allow changes&rdquo;; a backup copy is made before every change. This console exists only on this PC &mdash; it is never reachable through the tunnel.</p>
+        <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:8px">
+          <select id="sqlDb" style="max-width:260px"></select>
+          <label style="display:flex;align-items:center;gap:6px;width:auto"><input type="checkbox" id="sqlWrite" style="width:auto"> Allow changes</label>
+          <span style="flex:1"></span><button id="sqlTables" class="small">Show tables</button><button class="primary" id="sqlRun">Run</button>
+        </div>
+        <textarea id="sqlText" spellcheck="false" style="height:110px;font-family:ui-monospace,Consolas,monospace;font-size:13px" placeholder="CREATE TABLE messages (id INTEGER PRIMARY KEY, text TEXT);&#10;SELECT * FROM messages;"></textarea>
+        <div id="sqlMsg" class="notice" hidden style="margin-top:8px"></div>
+        <div id="sqlOut" style="overflow:auto;max-height:340px;margin-top:8px"></div>
+      </div>
+    </section>
     <section class="page" id="p-flow">
       <div class="card" style="padding:0;overflow:hidden">
         <div class="row" style="padding:10px 14px;margin:0"><b>Live workflows</b><span class="mut" style="flex:1">Browsers, online database, desktop app, this server and its backups &mdash; updates every few seconds.</span><button class="small" id="flowOpen">Open in browser</button></div>
@@ -358,10 +410,94 @@ function signOut(silent){S.token="";S.st=null;$("app").hidden=true;$("login").hi
 $("signOut").onclick=()=>signOut();
 
 /* nav */
-const TITLES={flow:"Live workflows",overview:"Overview",connect:"Connections",days:"Daily copies",backup:"Backup & replicas",activity:"Activity & log",settings:"Settings"};
+const TITLES={ws:"Projects & SQL",flow:"Live workflows",overview:"Overview",connect:"Connections",days:"Daily copies",backup:"Backup & replicas",activity:"Activity & log",settings:"Settings"};
 $("nav").onclick=e=>{const b=e.target.closest("button");if(!b)return;S.page=b.dataset.p;document.querySelectorAll("#nav button").forEach(x=>x.classList.toggle("on",x===b));
-  document.querySelectorAll(".page").forEach(p=>p.classList.toggle("on",p.id==="p-"+S.page));$("title").textContent=TITLES[S.page];if(S.page==="flow")loadFlow();refresh();};
+  document.querySelectorAll(".page").forEach(p=>p.classList.toggle("on",p.id==="p-"+S.page));$("title").textContent=TITLES[S.page];if(S.page==="flow")loadFlow();if(S.page==="ws")wsLoad();refresh();};
 window.addEventListener("message",e=>{if(e.source===$("flowFrame").contentWindow&&e.data&&e.data.flowHeight)$("flowFrame").style.height=Math.max(560,Math.ceil(e.data.flowHeight)+8)+"px";});
+/* projects & SQL console */
+function wsBase(){const c=S.st&&S.st.code_link;return(c&&c.url)||(S.st&&S.st.links&&S.st.links.local)||"";}
+async function wsLoad(){
+  try{const j=await api("/api/ws/list",{});S.ws=j.projects;}catch(e){toast(e.message,"bad");return;}
+  const base=wsBase();
+  $("wsList").innerHTML=S.ws.map(p=>{
+    const where=p.type==="app"?`forwards to the app on port ${esc(p.target_port)}`:fmtBytes(p.db_size)+" database";
+    const url=p.builtin?"(the original website and apps, unchanged)":base+"/w/"+p.slug;
+    const keys=p.type==="database"&&!p.builtin?`<div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap"><button class="small" data-c="${esc(p.admin_key)}" data-w="Admin key">Copy admin key</button><button class="small" data-c="${esc(p.view_key)}" data-w="Read-only key">Copy read-only key</button></div>`:"";
+    return `<div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px"><div class="row" style="gap:8px"><b>${esc(p.name)}</b><span class="mut" style="flex:1">${where}</span>${p.builtin?"":`<button class="small" data-del="${esc(p.slug)}">Remove</button>`}</div><div class="mut" style="font-size:12.5px;word-break:break-all">${esc(url)}</div>${p.builtin?"":`<div style="margin-top:4px"><button class="small" data-c="${esc(url)}" data-w="Project address">Copy address</button></div>`}${keys}</div>`;}).join("");
+  const sel=$("sqlDb"),cur=sel.value;sel.innerHTML=S.ws.filter(p=>p.type==="database").map(p=>`<option value="${esc(p.slug)}">${esc(p.name)}</option>`).join("");if(cur)sel.value=cur;
+  teTables();
+}
+/* table editor */
+const TE={slug:"",table:"",off:0,limit:50,cols:[],tables:[]};
+function teSync(){const sel=$("teDb"),cur=sel.value;sel.innerHTML=(S.ws||[]).filter(p=>p.type==="database").map(p=>`<option value="${esc(p.slug)}">${esc(p.name)}</option>`).join("");if(cur)sel.value=cur;TE.slug=sel.value;}
+async function pw4(slug,title,text){return slug==="mentor"?await ask(title,text):"";}
+async function teTables(){teSync();if(!TE.slug)return;
+  try{const r=await api("/api/ws/tables",{slug:TE.slug});TE.tables=r.tables;}catch(e){toast(e.message,"bad");return;}
+  if(!TE.tables.find(t=>t.name===TE.table&&t.type==="table"))TE.table=(TE.tables.find(t=>t.type==="table")||{}).name||"";
+  $("teTables").innerHTML=TE.tables.filter(t=>t.type==="table").map(t=>`<div><button class="small" style="width:100%;text-align:left;margin-bottom:4px;${t.name===TE.table?"border-color:var(--accent,#2563a8);font-weight:600":""}" data-t="${esc(t.name)}">${esc(t.name)} <span class="mut">${t.rows}</span></button></div>`).join("")||'<span class="mut">No tables yet. Click + New table.</span>';
+  teRows();apiDoc();}
+async function teRows(){if(!TE.table){$("teGrid").innerHTML="";$("teInfo").textContent="";return;}
+  try{const r=await api("/api/ws/rows",{slug:TE.slug,table:TE.table,limit:TE.limit,offset:TE.off,search:$("teSearch").value.trim()});TE.cols=r.columns;
+    if(r.total>0&&TE.off>=r.total){TE.off=Math.floor((r.total-1)/TE.limit)*TE.limit;return teRows();}
+    $("teGrid").innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr>${r.columns.map(c=>`<th style="text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card);white-space:nowrap">${esc(c.name)} <span class="mut" style="font-weight:400">${esc((c.type||"").toLowerCase())}</span></th>`).join("")}<th style="position:sticky;top:0;background:var(--card)"></th></tr></thead><tbody>${r.rows.map(row=>`<tr data-r="${row[0]}">${r.columns.map((c,i)=>`<td contenteditable="${c.pk?"false":"true"}" data-c="${esc(c.name)}" data-o="${esc(row[i+1]??"")}" style="padding:4px 8px;border-bottom:1px solid var(--line);min-width:60px;word-break:break-word;${row[i+1]===null?"color:var(--mut)":""}">${row[i+1]===null?"null":esc(row[i+1])}</td>`).join("")}<td style="border-bottom:1px solid var(--line)"><button class="small" data-x="${row[0]}">&times;</button></td></tr>`).join("")}</tbody></table>`;
+    $("teInfo").textContent=`${r.total} row(s) · showing ${r.rows.length?TE.off+1:0}–${TE.off+r.rows.length}`;$("tePrev").disabled=TE.off<=0;$("teNext").disabled=TE.off+TE.limit>=r.total;
+  }catch(e){toast(e.message,"bad");}}
+function apiDoc(){const b=wsBase(),p=(S.ws||[]).find(x=>x.slug===TE.slug)||{},t=TE.table||"your_table",k=p.admin_key||"(see Projects above)";
+  $("apiDoc").value=p.builtin?"The Mentor Workstation website already talks to this server. Other projects get their own address and keys.":
+`const API = "${b}/w/${TE.slug}";
+const KEY = "${k}";   // admin key: read + write. Use the read-only key in public pages.
+const H = {"X-Key": KEY, "Content-Type": "application/json", "ngrok-skip-browser-warning": "1"};
+
+// read rows      (filters: ?column=value&order=-id&limit=50)
+fetch(API + "/t/${t}?limit=50", {headers: H}).then(r => r.json());
+// add a row
+fetch(API + "/t/${t}", {method: "POST", headers: H, body: JSON.stringify({/* column: value */})});
+// change / delete row number 5
+fetch(API + "/t/${t}/5", {method: "PATCH", headers: H, body: JSON.stringify({/* column: value */})});
+fetch(API + "/t/${t}/5", {method: "DELETE", headers: H});`;}
+$("apiCopy").onclick=()=>copy($("apiDoc").value,"Code");
+$("teDb").onchange=()=>{TE.table="";TE.off=0;teTables();};
+$("teTables").onclick=e=>{const b=e.target.closest("[data-t]");if(!b)return;TE.table=b.dataset.t;TE.off=0;teTables();};
+$("teSearch").oninput=()=>{TE.off=0;clearTimeout(TE.tm);TE.tm=setTimeout(teRows,300);};
+$("tePrev").onclick=()=>{TE.off=Math.max(0,TE.off-TE.limit);teRows();};$("teNext").onclick=()=>{TE.off+=TE.limit;teRows();};
+$("teGrid").addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.matches("td[contenteditable]")){e.preventDefault();e.target.blur();}});
+$("teGrid").addEventListener("focusin",e=>{const td=e.target;if(td.matches&&td.matches("td[contenteditable=true]")){if(td.textContent==="null"&&td.dataset.o==="")td.textContent="";}});
+$("teGrid").addEventListener("focusout",async e=>{const td=e.target;if(!td.matches||!td.matches("td[contenteditable=true]"))return;
+  const v=td.textContent;if(v===td.dataset.o)return;
+  const pw=await pw4(TE.slug,"Change the live Mentor data","Editing the real Mentor database needs your admin password.");if(TE.slug==="mentor"&&!pw){teRows();return;}
+  try{await api("/api/ws/row",{slug:TE.slug,table:TE.table,rowid:td.parentElement.dataset.r,values:{[td.dataset.c]:v},password:pw});td.dataset.o=v;toast("Saved","good");}catch(err){toast(err.message,"bad");teRows();}});
+$("teGrid").onclick=async e=>{const x=e.target.closest("[data-x]");if(!x)return;
+  const pw=await ask("Delete row","This row will be deleted (a safety copy of the database is kept).",TE.slug==="mentor");if(!pw)return;
+  try{await api("/api/ws/row",{action:"delete",slug:TE.slug,table:TE.table,rowid:x.dataset.x,password:TE.slug==="mentor"?pw:""});toast("Row deleted","good");teTables();}catch(err){toast(err.message,"bad");}};
+$("teAddRow").onclick=async()=>{if(!TE.table)return toast("Create or pick a table first","bad");const pw=await pw4(TE.slug,"Change the live Mentor data","Adding rows to the real Mentor database needs your admin password.");if(TE.slug==="mentor"&&!pw)return;
+  try{await api("/api/ws/row",{slug:TE.slug,table:TE.table,values:{},password:pw});TE.off=1e9;await teTables();}catch(err){toast(err.message,"bad");}};
+$("teDrop").onclick=async()=>{if(!TE.table)return;const pw=await ask("Delete table "+TE.table,"The whole table and its rows will be deleted. A backup copy of the database is made first.");if(!pw)return;
+  try{await api("/api/ws/table",{action:"drop",slug:TE.slug,table:TE.table,password:pw});TE.table="";toast("Table deleted","good");await teTables();}catch(err){toast(err.message,"bad");}};
+$("teNew").onclick=()=>{$("teNewBox").hidden=!$("teNewBox").hidden;if(!$("tnCols").children.length)tnAdd();};
+function tnAdd(){const d=document.createElement("div");d.style.cssText="display:flex;gap:6px;margin-bottom:4px";d.innerHTML='<input placeholder="column name" class="cn"><select class="ct" style="max-width:140px"><option>text</option><option>number</option><option>integer</option><option>true/false</option><option>date/time</option><option>json</option></select><button class="small">&times;</button>';d.querySelector("button").onclick=()=>d.remove();$("tnCols").appendChild(d);}
+$("tnCol").onclick=tnAdd;
+$("tnSave").onclick=async()=>{const pw=await pw4(TE.slug,"Change the live Mentor data","Creating a table in the real Mentor database needs your admin password.");if(TE.slug==="mentor"&&!pw)return;
+  const columns=[...$("tnCols").children].map(d=>({name:d.querySelector(".cn").value,type:d.querySelector(".ct").value})).filter(c=>c.name.trim());
+  try{await api("/api/ws/table",{slug:TE.slug,table:$("tnName").value,columns,password:pw});TE.table=$("tnName").value.trim();$("tnName").value="";$("tnCols").innerHTML="";$("teNewBox").hidden=true;toast("Table created","good");await teTables();}catch(err){toast(err.message,"bad");}};
+$("wsType").onchange=()=>{$("wsPort").hidden=$("wsType").value!=="app";};
+$("wsForm").onsubmit=async e=>{e.preventDefault();const b=$("wsAdd");b.disabled=true;
+  try{await api("/api/ws/create",{name:$("wsName").value,type:$("wsType").value,port:$("wsPort").value});$("wsName").value="";toast("Project added","good");await wsLoad();}catch(err){toast(err.message,"bad");}finally{b.disabled=false;}};
+$("wsList").onclick=async e=>{const c=e.target.closest("[data-c]");if(c)return copy(c.dataset.c,c.dataset.w);
+  const d=e.target.closest("[data-del]");if(!d)return;const pw=await ask("Remove project","The project is taken off the server. Its database file is kept in a _deleted folder, not destroyed.");if(!pw)return;
+  try{await api("/api/ws/delete",{slug:d.dataset.del,password:pw});toast("Project removed","good");await wsLoad();}catch(err){toast(err.message,"bad");}};
+function sqlTable(cols,rows){if(!cols.length)return"";return`<table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr>${cols.map(c=>`<th style="text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card)">${esc(c)}</th>`).join("")}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(v=>`<td style="padding:4px 8px;border-bottom:1px solid var(--line);white-space:pre-wrap;word-break:break-word">${v===null?'<i class="mut">null</i>':esc(v)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;}
+async function sqlRun(){
+  const write=$("sqlWrite").checked,slug=$("sqlDb").value;let pw;
+  if(write&&slug==="mentor"){pw=await ask("Change the live Mentor data","Changing the real Mentor database needs your admin password. A backup copy is made first.");if(!pw)return;}
+  $("sqlRun").disabled=true;note($("sqlMsg"),"");
+  try{const r=await api("/api/ws/sql",{slug,sql:$("sqlText").value,write,password:pw});
+    $("sqlOut").innerHTML=sqlTable(r.columns,r.rows);
+    note($("sqlMsg"),(r.columns.length?`${r.rows.length} row(s)${r.truncated?" (showing the first 500)":""}`:(write?`Done. ${r.changes} row(s) changed.`:"Done."))+` · ${r.ms} ms`+(r.backup?` · backup saved (${r.backup})`:""),"good");}
+  catch(err){$("sqlOut").innerHTML="";note($("sqlMsg"),err.message,"bad");}finally{$("sqlRun").disabled=false;}}
+$("sqlRun").onclick=sqlRun;
+$("sqlText").onkeydown=e=>{if((e.ctrlKey||e.metaKey)&&e.key==="Enter"){e.preventDefault();sqlRun();}};
+$("sqlTables").onclick=async()=>{try{const r=await api("/api/ws/tables",{slug:$("sqlDb").value});
+  $("sqlOut").innerHTML=sqlTable(["table","rows","columns"],r.tables.map(t=>[t.name,t.rows,t.columns.join(", ")]));note($("sqlMsg"),r.tables.length?"":"No tables yet. Create one with CREATE TABLE.","info");}catch(err){note($("sqlMsg"),err.message,"bad");}};
 function flowUrl(){const sv=S.st&&S.st.server;return sv&&sv.running?`http://127.0.0.1:${sv.port}/workflows`:"";}
 function loadFlow(){const u=flowUrl(),f=$("flowFrame");note($("flowMsg"),u?"":"Start the server first: the workflow view reads its live connections.","info");if(u&&f.dataset.src!==u){f.dataset.src=u;f.src=u+"#k="+encodeURIComponent(S.st.keys.admin);}if(!u){f.removeAttribute("src");f.dataset.src="";}}
 $("flowOpen").onclick=()=>{const u=flowUrl();if(u)window.open(u+"#k="+encodeURIComponent(S.st.keys.admin),"_blank");};

@@ -138,6 +138,7 @@ def load_config():
         ("cloudflare_url", ""),
         ("cloudflare_auto", False),
         ("temp_link_auto", False),
+        ("workspaces", []),
         ("ngrok_token", ""),
         ("ngrok_domain", ""),
         ("ngrok_auto", False),
@@ -1171,6 +1172,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
             if path in ("", "/health") and method == "GET":
                 return self._send(200, {"status": "ok", "mode": cfg.get("mode", "primary"), "term": cfg.get("term", 1), "time": datetime.now().isoformat()})
+
+            if path.startswith("/w/") or path == "/w":
+                import fuads_workspaces
+                return fuads_workspaces.handle(self, method, path, urllib.parse.urlparse(self.path).query)
 
             role = self._role()
             who = (self.headers.get("X-Who") or role or "guest").strip()[:80]

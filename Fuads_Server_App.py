@@ -141,6 +141,54 @@ class Panel:
             self.rt.temp.stop()
         return {"ok": True}
 
+    # ---- projects (one database each) + SQL console ----
+    def ws_call(self, fn, *a):
+        import fuads_workspaces as ws
+        try:
+            return fn(ws, *a)
+        except ws.WsError as e:
+            raise ApiError(str(e), e.status)
+
+    def ws_list(self):
+        return self.ws_call(lambda ws: {"projects": ws.list_all()})
+
+    def ws_create(self, body):
+        return self.ws_call(lambda ws: {"ok": True, "project": ws.create(body.get("name"), body.get("type"), body.get("port"))})
+
+    def ws_delete(self, token, body):
+        self.confirm_password(token, body.get("password"))
+        return self.ws_call(lambda ws: ws.delete(str(body.get("slug") or "")))
+
+    def ws_tables(self, body):
+        return self.ws_call(lambda ws: {"tables": ws.tables(str(body.get("slug") or ""))})
+
+    def ws_sql(self, token, body):
+        write = bool(body.get("write"))
+        if write and body.get("slug") == "mentor":
+            self.confirm_password(token, body.get("password"))   # the live Mentor data needs the password for changes
+        return self.ws_call(lambda ws: ws.run_sql(str(body.get("slug") or ""), body.get("sql"), write))
+
+    def ws_guard(self, token, body):
+        if body.get("slug") == "mentor":
+            self.confirm_password(token, body.get("password"))   # editing the live Mentor data needs the password
+
+    def ws_rows(self, body):
+        return self.ws_call(lambda ws: ws.rows(str(body.get("slug") or ""), str(body.get("table") or ""), body.get("limit") or 50, body.get("offset") or 0, str(body.get("search") or "")))
+
+    def ws_row(self, token, body):
+        self.ws_guard(token, body)
+        a = body.get("action")
+        if a == "delete":
+            return self.ws_call(lambda ws: ws.row_delete(body.get("slug"), body.get("table"), body.get("rowid")))
+        return self.ws_call(lambda ws: ws.row_save(body.get("slug"), body.get("table"), body.get("rowid"), body.get("values") or {}))
+
+    def ws_table(self, token, body):
+        if body.get("action") == "drop":
+            self.confirm_password(token, body.get("password"))
+            return self.ws_call(lambda ws: ws.table_drop(body.get("slug"), body.get("table")))
+        self.ws_guard(token, body)
+        return self.ws_call(lambda ws: ws.table_create(body.get("slug"), body.get("table"), body.get("columns")))
+
     def ngrok_save(self, body):
         cfg = core.load_config()
         token = body.get("token")
@@ -373,6 +421,14 @@ def make_handler(panel):
                     "/api/temp/start": lambda: panel.temp(True),
                     "/api/temp/stop": lambda: panel.temp(False),
                     "/api/ngrok/save": lambda: panel.ngrok_save(b),
+                    "/api/ws/list": lambda: panel.ws_list(),
+                    "/api/ws/create": lambda: panel.ws_create(b),
+                    "/api/ws/delete": lambda: panel.ws_delete(token, b),
+                    "/api/ws/tables": lambda: panel.ws_tables(b),
+                    "/api/ws/sql": lambda: panel.ws_sql(token, b),
+                    "/api/ws/rows": lambda: panel.ws_rows(b),
+                    "/api/ws/row": lambda: panel.ws_row(token, b),
+                    "/api/ws/table": lambda: panel.ws_table(token, b),
                     "/api/ngrok/start": lambda: (panel.rt.start_ngrok(), {"ok": True})[1],
                     "/api/ngrok/stop": lambda: (panel.rt.ngrok.stop(), {"ok": True})[1],
                     "/api/named/save": lambda: panel.named_save(b),
