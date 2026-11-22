@@ -55,6 +55,7 @@ class Panel:
         self.rt = runtime
         self.port = port
         self.sessions = {}          # token -> admin username
+        self.sb_unlock_until = {}   # token -> time until Supabase editing stays unlocked
         self.lock = threading.Lock()
         self.on_show = lambda: None
         self.on_quit = lambda: None
@@ -168,6 +169,50 @@ class Panel:
             self.confirm_password(token, body.get("password"))   # the live Mentor data needs the password for changes
         return self.ws_call(lambda ws: ws.run_sql(str(body.get("slug") or ""), body.get("sql"), write))
 
+    # ---- Supabase manager ----
+    SB_UNLOCK_SECONDS = 900
+
+    def sb_call(self, fn, *a):
+        import fuads_supabase as sb
+        try:
+            return fn(sb, *a)
+        except sb.SbError as e:
+            raise ApiError(str(e), 400 if e.status not in (404, 409, 502) else e.status)
+
+    def sb_unlocked(self, token):
+        return self.sb_unlock_until.get(token, 0) > time.time()
+
+    def sb_need_unlock(self, token):
+        if not self.sb_unlocked(token):
+            raise ApiError("Editing is locked. Click \"Unlock editing\" and enter your password.", 423)
+
+    def sb_unlock(self, token, body):
+        self.confirm_password(token, body.get("password"))
+        self.sb_unlock_until[token] = time.time() + self.SB_UNLOCK_SECONDS
+        return {"ok": True, "seconds": self.SB_UNLOCK_SECONDS}
+
+    def sb_status(self, token):
+        import fuads_supabase as sb
+        left = max(0, int(self.sb_unlock_until.get(token, 0) - time.time()))
+        return dict(sb.connection(), unlocked_seconds=left)
+
+    def sb_connect(self, token, body):
+        self.confirm_password(token, body.get("password"))
+        return self.sb_call(lambda sb: sb.save_connection(body.get("url"), body.get("key")))
+
+    def sb_import(self, token, body):
+        self.sb_need_unlock(token)
+        args = (str(body.get("table") or ""), str(body.get("filename") or ""), body.get("data") or "")
+        if body.get("apply"):
+            return self.sb_call(lambda sb: sb.import_apply(*args, "new" if body.get("mode") == "new" else "update"))
+        return self.sb_call(lambda sb: sb.import_preview(*args))
+
+    def sb_row(self, token, body):
+        self.sb_need_unlock(token)
+        if body.get("action") == "delete":
+            return self.sb_call(lambda sb: sb.row_delete(body.get("table"), body.get("key")))
+        return self.sb_call(lambda sb: sb.row_save(body.get("table"), body.get("key"), body.get("values") or {}))
+
     def ws_guard(self, token, body):
         if body.get("slug") == "mentor":
             self.confirm_password(token, body.get("password"))   # editing the live Mentor data needs the password
@@ -188,6 +233,7 @@ class Panel:
             return self.ws_call(lambda ws: ws.table_drop(body.get("slug"), body.get("table")))
         self.ws_guard(token, body)
         return self.ws_call(lambda ws: ws.table_create(body.get("slug"), body.get("table"), body.get("columns")))
+
 
     def ngrok_save(self, body):
         cfg = core.load_config()
@@ -367,7 +413,7 @@ def make_handler(panel):
 
         def _json(self):
             n = int(self.headers.get("Content-Length") or 0)
-            if n > 1_000_000:
+            if n > 14_000_000:
                 raise ApiError("Request too large.", 413)
             try:
                 return json.loads(self.rfile.read(n) or b"{}")
@@ -421,6 +467,16 @@ def make_handler(panel):
                     "/api/temp/start": lambda: panel.temp(True),
                     "/api/temp/stop": lambda: panel.temp(False),
                     "/api/ngrok/save": lambda: panel.ngrok_save(b),
+                    "/api/sb/status": lambda: panel.sb_status(token),
+                    "/api/sb/connect": lambda: panel.sb_connect(token, b),
+                    "/api/sb/disconnect": lambda: (panel.confirm_password(token, b.get("password")), panel.sb_call(lambda sb: sb.disconnect()))[1],
+                    "/api/sb/unlock": lambda: panel.sb_unlock(token, b),
+                    "/api/sb/tables": lambda: {"tables": panel.sb_call(lambda sb: sb.tables())},
+                    "/api/sb/rows": lambda: panel.sb_call(lambda sb: sb.rows(b.get("table"), b.get("limit") or 100, b.get("offset") or 0, b.get("search") or "")),
+                    "/api/sb/row": lambda: panel.sb_row(token, b),
+                    "/api/sb/import": lambda: panel.sb_import(token, b),
+                    "/api/sb/backup": lambda: panel.sb_call(lambda sb: sb.backup()),
+                    "/api/sb/export": lambda: {"csv": panel.sb_call(lambda sb: sb.export_csv(str(b.get("table") or "")))},
                     "/api/ws/list": lambda: panel.ws_list(),
                     "/api/ws/create": lambda: panel.ws_create(b),
                     "/api/ws/delete": lambda: panel.ws_delete(token, b),

@@ -51,6 +51,8 @@ jobs:
           --add-data "server_panel.html;."
           --add-data "index.html;."
           --hidden-import fuads_workspaces
+          --hidden-import fuads_supabase
+          --hidden-import fuads_supabase
           --hidden-import pystray._win32
           --collect-all webview
           Fuads_Server_App.py

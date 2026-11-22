@@ -53,6 +53,9 @@ main{overflow:auto;padding:22px 26px 40px}
 .pill.ok{color:var(--green)}.pill.bad{color:var(--red)}.pill.warn{color:var(--amber)}.pill.idle{color:var(--mut)}
 .page{display:none}.page.on{display:block}
 .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
+@keyframes flashbg{from{background:rgba(250,204,21,.55)}to{background:transparent}}
+td.flash{animation:flashbg 2.2s ease-out}td.saved{background:rgba(34,160,90,.25);transition:background .8s}
+td[contenteditable=true]:focus{outline:2px solid #2563a8;outline-offset:-2px;background:rgba(37,99,168,.08)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:var(--shadow)}
 .card h3{margin:0 0 4px;font-size:15px;display:flex;align-items:center;gap:8px}
 .card .sub{color:var(--mut);margin:0 0 12px;font-size:13px}
@@ -116,6 +119,7 @@ th{color:var(--mut);font-weight:700;font-size:12px;position:sticky;top:0;backgro
     <nav id="nav">
       <button data-p="overview" class="on"><span class="ic">&#9673;</span>Overview</button>
       <button data-p="connect"><span class="ic">&#128279;</span>Connections</button>
+      <button data-p="sb"><span class="ic">&#9783;</span>Supabase tables</button>
       <button data-p="ws"><span class="ic">&#128451;</span>Projects &amp; SQL</button>
       <button data-p="flow"><span class="ic">&#128760;</span>Workflows</button>
       <button data-p="days"><span class="ic">&#128197;</span>Daily copies</button>
@@ -260,6 +264,47 @@ th{color:var(--mut);font-weight:700;font-size:12px;position:sticky;top:0;backgro
     </section>
 
     <!-- ACTIVITY -->
+    <section class="page" id="p-sb">
+      <div class="card" id="sbConn">
+        <h3>Connect your Supabase database</h3>
+        <p class="sub">Paste the project URL and the <b>service_role</b> key (Supabase &rarr; Project Settings &rarr; API). The key stays on this PC only; it is never shown in a browser or sent to a website.</p>
+        <div class="row" style="gap:8px;flex-wrap:wrap">
+          <input id="sbUrl" placeholder="https://xxxxxxxx.supabase.co" style="flex:2;min-width:220px">
+          <input id="sbKey" type="password" placeholder="service_role key" style="flex:2;min-width:220px" autocomplete="off">
+          <button class="primary" id="sbSave">Connect</button>
+        </div>
+      </div>
+      <div id="sbMain" hidden>
+        <div class="card" style="padding:10px 14px">
+          <div class="row" style="gap:8px;flex-wrap:wrap">
+            <b>Supabase</b><span class="mut" id="sbWhere" style="flex:1;word-break:break-all"></span>
+            <label style="display:flex;align-items:center;gap:6px;width:auto"><input type="checkbox" id="sbLive" checked style="width:auto"> Live (updates every 3 s)</label>
+            <button class="small" id="sbLock">Unlock editing</button>
+            <button class="small" id="sbBackup">Back up now</button>
+            <button class="small" id="sbOff">Disconnect</button>
+          </div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:8px">
+            <b id="sbTitle">Tables</b>
+            <input id="sbSearch" placeholder="Search…" style="max-width:220px">
+            <span style="flex:1"></span>
+            <button class="small" id="sbAdd">+ Add row</button>
+            <button class="small" id="sbImportBtn">Import Excel / CSV</button>
+            <button class="small" id="sbExport">Download CSV</button>
+            <input type="file" id="sbFile" accept=".xlsx,.csv,.txt" hidden>
+          </div>
+          <div id="sbImport" hidden style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px"></div>
+          <div id="sbNew" hidden style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px"></div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            <div id="sbTables" style="min-width:170px;max-width:210px"></div>
+            <div style="flex:1;min-width:260px"><div id="sbGrid" style="overflow:auto;max-height:560px"></div>
+              <div class="row" style="gap:8px;margin-top:6px"><span class="mut" id="sbInfo" style="flex:1"></span><button class="small" id="sbPrev">&larr;</button><button class="small" id="sbNext">&rarr;</button></div></div>
+          </div>
+          <p class="mut" style="font-size:12px;margin:8px 0 0">Click a cell and type; press Enter to save instantly (Tab / arrows move between cells). Every change is logged and a copy of what was replaced is kept in the changes log. The password column is hidden: type a new value to replace one.</p>
+        </div>
+      </div>
+    </section>
     <section class="page" id="p-ws">
       <div class="card">
         <h3>Projects <span class="mut" style="font-weight:400">&mdash; one server, one address, one database per project</span></h3>
@@ -410,10 +455,78 @@ function signOut(silent){S.token="";S.st=null;$("app").hidden=true;$("login").hi
 $("signOut").onclick=()=>signOut();
 
 /* nav */
-const TITLES={ws:"Projects & SQL",flow:"Live workflows",overview:"Overview",connect:"Connections",days:"Daily copies",backup:"Backup & replicas",activity:"Activity & log",settings:"Settings"};
+const TITLES={sb:"Supabase tables",ws:"Projects & SQL",flow:"Live workflows",overview:"Overview",connect:"Connections",days:"Daily copies",backup:"Backup & replicas",activity:"Activity & log",settings:"Settings"};
 $("nav").onclick=e=>{const b=e.target.closest("button");if(!b)return;S.page=b.dataset.p;document.querySelectorAll("#nav button").forEach(x=>x.classList.toggle("on",x===b));
-  document.querySelectorAll(".page").forEach(p=>p.classList.toggle("on",p.id==="p-"+S.page));$("title").textContent=TITLES[S.page];if(S.page==="flow")loadFlow();if(S.page==="ws")wsLoad();refresh();};
+  document.querySelectorAll(".page").forEach(p=>p.classList.toggle("on",p.id==="p-"+S.page));$("title").textContent=TITLES[S.page];if(S.page==="flow")loadFlow();if(S.page==="ws")wsLoad();if(S.page==="sb")sbStart();refresh();};
 window.addEventListener("message",e=>{if(e.source===$("flowFrame").contentWindow&&e.data&&e.data.flowHeight)$("flowFrame").style.height=Math.max(560,Math.ceil(e.data.flowHeight)+8)+"px";});
+/* Supabase tables: spreadsheet-style editing */
+const SB={table:"",off:0,limit:100,cols:[],pks:[],json:"",tables:[],until:0,timer:null,busy:false};
+const sbSecret=c=>/^password$/i.test(c),SBDOTS="••••••";
+function sbLockUi(){const left=Math.max(0,Math.floor((SB.until-Date.now())/1000));$("sbLock").textContent=left>0?`Editing unlocked · ${Math.floor(left/60)}:${String(left%60).padStart(2,"0")}`:"Unlock editing";$("sbLock").classList.toggle("primary",left<=0);}
+setInterval(sbLockUi,1000);
+async function sbUnlock(){const pw=await ask("Unlock editing","Enter your admin password to edit the Supabase data. Editing stays unlocked for 15 minutes.");if(!pw)return false;
+  try{const r=await api("/api/sb/unlock",{password:pw});SB.until=Date.now()+r.seconds*1000;sbLockUi();toast("Editing unlocked","good");return true;}catch(e){toast(e.message,"bad");return false;}}
+async function sbEnsure(){if(SB.until>Date.now())return true;return await sbUnlock();}
+async function sbStart(){
+  try{const s=await api("/api/sb/status",{});SB.until=Date.now()+s.unlocked_seconds*1000;
+    const ok=!!(s.url&&s.key_saved);$("sbConn").hidden=ok;$("sbMain").hidden=!ok;if(s.url&&!$("sbUrl").value)$("sbUrl").value=s.url;
+    if(!ok)return;$("sbWhere").textContent=s.url;sbLockUi();await sbTables();}catch(e){toast(e.message,"bad");}
+  clearInterval(SB.timer);SB.timer=setInterval(()=>{if(S.page==="sb"&&SB.table&&$("sbLive").checked&&!document.hidden)sbRows(true);},3000);}
+$("sbSave").onclick=async()=>{const pw=await ask("Connect Supabase","Enter your admin password to save the Supabase connection on this PC.");if(!pw)return;$("sbSave").disabled=true;
+  try{await api("/api/sb/connect",{url:$("sbUrl").value,key:$("sbKey").value,password:pw});$("sbKey").value="";toast("Connected","good");sbStart();}catch(e){toast(e.message,"bad");}finally{$("sbSave").disabled=false;}};
+$("sbOff").onclick=async()=>{const pw=await ask("Disconnect Supabase","The saved key is removed from this PC.");if(!pw)return;try{await api("/api/sb/disconnect",{password:pw});SB.table="";sbStart();}catch(e){toast(e.message,"bad");}};
+$("sbLock").onclick=()=>{if(SB.until>Date.now()){SB.until=0;sbLockUi();}else sbUnlock();};
+$("sbBackup").onclick=async()=>{$("sbBackup").disabled=true;try{const r=await api("/api/sb/backup",{});toast(`Backed up ${r.rows} rows to ${r.folder}`,"good");}catch(e){toast(e.message,"bad");}finally{$("sbBackup").disabled=false;}};
+async function sbTables(){const r=await api("/api/sb/tables",{});SB.tables=r.tables;if(!SB.tables.find(t=>t.name===SB.table))SB.table=(SB.tables[0]||{}).name||"";
+  $("sbTables").innerHTML=SB.tables.map(t=>`<div><button class="small" data-t="${esc(t.name)}" style="width:100%;text-align:left;margin-bottom:4px;${t.name===SB.table?"border-color:var(--accent,#2563a8);font-weight:600":""}">${esc(t.name)} <span class="mut">${t.rows??""}</span></button></div>`).join("");
+  sbRows();}
+$("sbTables").onclick=e=>{const b=e.target.closest("[data-t]");if(!b)return;SB.table=b.dataset.t;SB.off=0;SB.json="";$("sbSearch").value="";$("sbImport").hidden=$("sbNew").hidden=true;sbTables();};
+$("sbSearch").oninput=()=>{SB.off=0;clearTimeout(SB.tm);SB.tm=setTimeout(()=>sbRows(),350);};
+$("sbPrev").onclick=()=>{SB.off=Math.max(0,SB.off-SB.limit);sbRows();};$("sbNext").onclick=()=>{SB.off+=SB.limit;sbRows();};
+function sbKey(row){const k={};SB.pks.forEach(p=>k[p]=row[p]);return k;}
+async function sbRows(silent){if(!SB.table||SB.busy)return;
+  if(silent&&(($("sbGrid").contains(document.activeElement)&&document.activeElement.isContentEditable)||!$("sbNew").hidden))return;
+  SB.busy=true;
+  try{const r=await api("/api/sb/rows",{table:SB.table,limit:SB.limit,offset:SB.off,search:$("sbSearch").value.trim()});
+    if(r.total>0&&SB.off>=r.total){SB.off=Math.floor((r.total-1)/SB.limit)*SB.limit;SB.busy=false;return sbRows();}
+    const sig=JSON.stringify(r);if(silent&&sig===SB.json)return;SB.json=sig;SB.cols=r.columns;SB.pks=r.pks;
+    $("sbTitle").textContent=SB.table;
+    $("sbGrid").innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr>${r.columns.map(c=>`<th style="text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card);white-space:nowrap">${esc(c.name)}${c.pk?" &#128273;":""} <span class="mut" style="font-weight:400">${esc(c.type)}</span></th>`).join("")}<th style="position:sticky;top:0;background:var(--card)"></th></tr></thead><tbody>${r.rows.map(row=>`<tr data-k='${esc(JSON.stringify(sbKey(row)))}'>${r.columns.map(c=>{const v=row[c.name];const shown=v===null||v===undefined?"":(typeof v==="object"?JSON.stringify(v):String(v));
+      return`<td contenteditable="${c.pk?"false":"true"}" data-c="${esc(c.name)}" data-o="${esc(shown)}" style="padding:4px 8px;border-bottom:1px solid var(--line);min-width:60px;word-break:break-word;${c.pk?"color:var(--mut);":""}">${esc(shown)}</td>`;}).join("")}<td style="border-bottom:1px solid var(--line)"><button class="small" data-x="1">&times;</button></td></tr>`).join("")}</tbody></table>`;
+    $("sbInfo").textContent=`${r.total} row(s) · showing ${r.rows.length?SB.off+1:0}–${SB.off+r.rows.length}`;$("sbPrev").disabled=SB.off<=0;$("sbNext").disabled=SB.off+SB.limit>=r.total;
+  }catch(e){if(!silent)toast(e.message,"bad");}finally{SB.busy=false;}}
+$("sbGrid").addEventListener("focusin",e=>{const td=e.target;if(td.matches&&td.matches("td[contenteditable=true]")&&sbSecret(td.dataset.c))td.textContent="";});
+function sbMove(td,dr){const tr=td.closest("tr"),ix=[...tr.children].indexOf(td),next=dr>0?tr.nextElementSibling:tr.previousElementSibling;if(next&&next.children[ix]&&next.children[ix].isContentEditable)next.children[ix].focus();}
+$("sbGrid").addEventListener("keydown",e=>{const td=e.target;if(!td.matches||!td.matches("td[contenteditable]"))return;
+  if(e.key==="Enter"){e.preventDefault();const t=td;t.blur();sbMove(t,1);}
+  else if(e.key==="Escape"){td.textContent=td.dataset.o;td.blur();}
+  else if(e.key==="ArrowDown"){e.preventDefault();td.blur();sbMove(td,1);}
+  else if(e.key==="ArrowUp"){e.preventDefault();td.blur();sbMove(td,-1);}});
+$("sbGrid").addEventListener("focusout",async e=>{const td=e.target;if(!td.matches||!td.matches("td[contenteditable=true]"))return;
+  const v=td.textContent,secret=sbSecret(td.dataset.c);if(secret?v==="":v===td.dataset.o)return;
+  if(!await sbEnsure()){td.textContent=secret?SBDOTS:td.dataset.o;return;}
+  try{await api("/api/sb/row",{table:SB.table,key:JSON.parse(td.parentElement.dataset.k),values:{[td.dataset.c]:v}});td.dataset.o=secret?"":v;if(secret)td.textContent=SBDOTS;td.style.background="rgba(33,140,90,.18)";setTimeout(()=>td.style.background="",900);SB.json="";}
+  catch(err){toast(err.message,"bad");td.textContent=td.dataset.o;}});
+$("sbGrid").onclick=async e=>{const x=e.target.closest("[data-x]");if(!x)return;if(!await sbEnsure())return;if(!await ask("Delete row","This row will be deleted from Supabase. A copy is kept in the changes log.",false))return;
+  try{await api("/api/sb/row",{action:"delete",table:SB.table,key:JSON.parse(x.closest("tr").dataset.k)});toast("Row deleted","good");SB.json="";sbTables();}catch(err){toast(err.message,"bad");}};
+$("sbAdd").onclick=()=>{if(!SB.table)return;const box=$("sbNew");if(!box.hidden){box.hidden=true;return;}
+  box.innerHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px">${SB.cols.map(c=>`<label style="font-size:12px">${esc(c.name)}${c.pk?" &#128273;":""}<input data-n="${esc(c.name)}" ${sbSecret(c.name)?'type="password"':""}></label>`).join("")}</div><div class="row" style="gap:8px;margin-top:8px"><button class="primary small" id="sbNewSave">Add row</button><button class="small" id="sbNewCancel">Cancel</button></div>`;box.hidden=false;
+  $("sbNewCancel").onclick=()=>box.hidden=true;
+  $("sbNewSave").onclick=async()=>{if(!await sbEnsure())return;const values={};box.querySelectorAll("input[data-n]").forEach(i=>{if(i.value!=="")values[i.dataset.n]=i.value;});
+    try{await api("/api/sb/row",{table:SB.table,key:null,values});box.hidden=true;toast("Row added","good");SB.json="";SB.off=1e9;sbTables();}catch(err){toast(err.message,"bad");}};};
+$("sbExport").onclick=async()=>{if(!SB.table)return;try{const r=await api("/api/sb/export",{table:SB.table});const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([r.csv],{type:"text/csv"}));a.download=SB.table+"_"+new Date().toISOString().slice(0,10)+".csv";a.click();}catch(e){toast(e.message,"bad");}};
+/* Excel / CSV import */
+$("sbImportBtn").onclick=()=>{if(!SB.table)return;$("sbFile").value="";$("sbFile").click();};
+function b64(buf){let s="";const a=new Uint8Array(buf);for(let i=0;i<a.length;i+=32768)s+=String.fromCharCode.apply(null,a.subarray(i,i+32768));return btoa(s);}
+$("sbFile").onchange=async()=>{const f=$("sbFile").files[0];if(!f)return;if(!await sbEnsure())return;
+  const data=b64(await f.arrayBuffer()),box=$("sbImport");box.hidden=false;box.textContent="Reading the file…";
+  try{const p=await api("/api/sb/import",{table:SB.table,filename:f.name,data});
+    box.innerHTML=`<b>${esc(f.name)}</b> &rarr; <b>${esc(SB.table)}</b><div style="margin:6px 0">${p.rows} row(s): <b>${p.new} new</b>, <b>${p.update} will update</b> existing rows${p.skipped?`, ${p.skipped} empty skipped`:""}${p.duplicates?`, ${p.duplicates} repeated keys merged`:""}.</div>
+      <div class="mut" style="font-size:12.5px">Columns matched: ${p.mapped.map(m=>esc(m.sheet)+(m.sheet===m.column?"":" &rarr; "+esc(m.column))).join(", ")}${p.ignored.length?`<br>Ignored (no such column): ${p.ignored.map(esc).join(", ")}`:""}</div>
+      <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap"><button class="primary small" data-m="update">Add new + update existing</button><button class="small" data-m="new">Add new only</button><button class="small" data-m="">Cancel</button><span class="mut" style="font-size:12px">A backup of the table is saved first.</span></div>`;
+    box.onclick=async e=>{const b=e.target.closest("button[data-m]");if(!b)return;if(!b.dataset.m){box.hidden=true;return;}box.querySelectorAll("button").forEach(x=>x.disabled=true);box.insertAdjacentHTML("beforeend","<div>Importing…</div>");
+      try{const r=await api("/api/sb/import",{table:SB.table,filename:f.name,data,apply:true,mode:b.dataset.m});box.hidden=true;toast(`Imported ${r.rows} row(s)`,"good");SB.json="";sbTables();}catch(err){toast(err.message,"bad");box.hidden=true;}};
+  }catch(e){box.hidden=true;toast(e.message,"bad");}};
 /* projects & SQL console */
 function wsBase(){const c=S.st&&S.st.code_link;return(c&&c.url)||(S.st&&S.st.links&&S.st.links.local)||"";}
 async function wsLoad(){
