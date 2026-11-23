@@ -308,6 +308,21 @@ def read_xlsx(data):
     return out
 
 
+def _date_iso(v):
+    """Excel serial numbers, 2026-11-23 or 23/11/2026 (day first) -> 2026-11-23; anything else is left as it is."""
+    from datetime import date, timedelta
+    if isinstance(v, (int, float)) and not isinstance(v, bool) and 20000 < v < 80000:
+        return (date(1899, 12, 30) + timedelta(days=int(v))).isoformat()
+    t = str(v).strip()
+    m = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})", t)
+    if m:
+        return f"{m[1]}-{int(m[2]):02d}-{int(m[3]):02d}"
+    m = re.match(r"^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$", t)
+    if m:
+        return f"{m[3]}-{int(m[2]):02d}-{int(m[1]):02d}"
+    return v
+
+
 def _norm(s):
     return re.sub(r"[^a-z0-9]", "", str(s or "").lower())
 
@@ -327,7 +342,7 @@ def _parse(table, filename, b64):
         raise SbError("The sheet needs a header row and at least one data row.")
     header = [str(h or "").strip() for h in grid[0]]
     by_norm = {_norm(c["name"]): c["name"] for c in cols}
-    aliases = {"id": "op_id", "operatorid": "op_id", "opid": "op_id", "name": "full_name", "operatorname": "full_name", "mentor": "mentor_name"}
+    aliases = {"id": "op_id", "operatorid": "op_id", "opid": "op_id", "name": "full_name", "operatorname": "full_name", "mentor": "mentor_name", "contact": "contact_number", "phone": "contact_number", "phonenumber": "contact_number", "mobile": "contact_number", "mobilenumber": "contact_number", "cellnumber": "contact_number", "sex": "gender", "joindate": "joining_date", "dateofjoining": "joining_date", "doj": "joining_date", "joining": "joining_date"}
     mapping = {}
     for i, h in enumerate(header):
         n = _norm(h)
@@ -348,6 +363,9 @@ def _parse(table, filename, b64):
         if all(rec.get(p) in (None, "") for p in pks):
             skipped += 1
             continue
+        for c in cols:
+            if c["type"] == "date" and rec.get(c["name"]) is not None:
+                rec[c["name"]] = _date_iso(rec[c["name"]])
         # keep to plain text for text columns (Excel turns "00123" into a number)
         for c in cols:
             if c["name"] in rec and rec[c["name"]] is not None and c["type"] in ("text", "character varying") and not isinstance(rec[c["name"]], str):
