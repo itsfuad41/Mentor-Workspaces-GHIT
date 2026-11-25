@@ -267,7 +267,7 @@ th{color:var(--mut);font-weight:700;font-size:12px;position:sticky;top:0;backgro
     <section class="page" id="p-sb">
       <div class="card" id="sbConn">
         <h3>Connect your Supabase database</h3>
-        <p class="sub">Paste the project URL and the <b>service_role</b> key (Supabase &rarr; Project Settings &rarr; API). The key stays on this PC only; it is never shown in a browser or sent to a website.</p>
+        <p class="sub">Paste the project URL and the <b>service_role</b> key (Supabase &rarr; Project Settings &rarr; API). The key stays on this PC only; it is never shown in a browser or sent to a website. Once connected, the website&rsquo;s server address also updates itself after every restart.</p>
         <div class="row" style="gap:8px;flex-wrap:wrap">
           <input id="sbUrl" placeholder="https://xxxxxxxx.supabase.co" style="flex:2;min-width:220px">
           <input id="sbKey" type="password" placeholder="service_role key" style="flex:2;min-width:220px" autocomplete="off">
@@ -282,6 +282,11 @@ th{color:var(--mut);font-weight:700;font-size:12px;position:sticky;top:0;backgro
             <button class="small" id="sbLock">Unlock editing</button>
             <button class="small" id="sbBackup">Back up now</button>
             <button class="small" id="sbOff">Disconnect</button>
+          </div>
+          <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid var(--line)">
+            <label style="display:flex;align-items:center;gap:6px;width:auto"><input type="checkbox" id="sbPub" style="width:auto"> Keep the website's server address up to date automatically</label>
+            <span class="mut" id="sbPubInfo" style="flex:1;word-break:break-all"></span>
+            <button class="small" id="sbPubNow">Update now</button>
           </div>
         </div>
         <div class="card" style="margin-top:14px">
@@ -470,11 +475,16 @@ async function sbEnsure(){if(SB.until>Date.now())return true;return await sbUnlo
 async function sbStart(){
   try{const s=await api("/api/sb/status",{});SB.until=Date.now()+s.unlocked_seconds*1000;
     const ok=!!(s.url&&s.key_saved);$("sbConn").hidden=ok;$("sbMain").hidden=!ok;if(s.url&&!$("sbUrl").value)$("sbUrl").value=s.url;
-    if(!ok)return;$("sbWhere").textContent=s.url;sbLockUi();await sbTables();}catch(e){toast(e.message,"bad");}
+    if(!ok)return;$("sbWhere").textContent=s.url;sbLockUi();sbPubLoad();await sbTables();}catch(e){toast(e.message,"bad");}
   clearInterval(SB.timer);SB.timer=setInterval(()=>{if(S.page==="sb"&&SB.table&&$("sbLive").checked&&!document.hidden)sbRows(true);},3000);}
 $("sbSave").onclick=async()=>{const pw=await ask("Connect Supabase","Enter your admin password to save the Supabase connection on this PC.");if(!pw)return;$("sbSave").disabled=true;
   try{await api("/api/sb/connect",{url:$("sbUrl").value,key:$("sbKey").value,password:pw});$("sbKey").value="";toast("Connected","good");sbStart();}catch(e){toast(e.message,"bad");}finally{$("sbSave").disabled=false;}};
 $("sbOff").onclick=async()=>{const pw=await ask("Disconnect Supabase","The saved key is removed from this PC.");if(!pw)return;try{await api("/api/sb/disconnect",{password:pw});SB.table="";sbStart();}catch(e){toast(e.message,"bad");}};
+async function sbPubLoad(){try{const a=await api("/api/sb/address",{});$("sbPub").checked=a.enabled;
+  $("sbPubInfo").textContent=!a.enabled?"Off: after a restart you must paste the new connection code on the website.":a.ok?`Updated ${a.when} \u2192 ${a.urls}`:(a.error||"Waiting for the first update…");}catch(e){}}
+$("sbPub").onchange=async()=>{try{await api("/api/sb/address/set",{enabled:$("sbPub").checked});}catch(e){toast(e.message,"bad");}sbPubLoad();};
+$("sbPubNow").onclick=async()=>{$("sbPubNow").disabled=true;try{const a=await api("/api/sb/address/now",{});toast(a.ok?"Website address updated":(a.error||"Not updated"),a.ok?"good":"bad");}catch(e){toast(e.message,"bad");}finally{$("sbPubNow").disabled=false;sbPubLoad();}};
+setInterval(()=>{if(S.page==="sb"&&!$("sbMain").hidden)sbPubLoad();},10000);
 $("sbLock").onclick=()=>{if(SB.until>Date.now()){SB.until=0;sbLockUi();}else sbUnlock();};
 $("sbBackup").onclick=async()=>{$("sbBackup").disabled=true;try{const r=await api("/api/sb/backup",{});toast(`Backed up ${r.rows} rows to ${r.folder}`,"good");}catch(e){toast(e.message,"bad");}finally{$("sbBackup").disabled=false;}};
 async function sbTables(){const r=await api("/api/sb/tables",{});SB.tables=r.tables;if(!SB.tables.find(t=>t.name===SB.table))SB.table=(SB.tables[0]||{}).name||"";

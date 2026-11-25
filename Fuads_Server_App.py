@@ -475,6 +475,9 @@ def make_handler(panel):
                     "/api/sb/rows": lambda: panel.sb_call(lambda sb: sb.rows(b.get("table"), b.get("limit") or 100, b.get("offset") or 0, b.get("search") or "")),
                     "/api/sb/row": lambda: panel.sb_row(token, b),
                     "/api/sb/import": lambda: panel.sb_import(token, b),
+                    "/api/sb/address": lambda: panel.sb_call(lambda sb: sb.address_state()),
+                    "/api/sb/address/set": lambda: panel.sb_call(lambda sb: sb.address_set(b.get("enabled"))),
+                    "/api/sb/address/now": lambda: panel.sb_call(lambda sb: sb.address_now()),
                     "/api/sb/backup": lambda: panel.sb_call(lambda sb: sb.backup()),
                     "/api/sb/export": lambda: {"csv": panel.sb_call(lambda sb: sb.export_csv(str(b.get("table") or "")))},
                     "/api/ws/list": lambda: panel.ws_list(),
@@ -621,6 +624,11 @@ def main(argv=None):
         log("No free port for the control panel.")
         return 1
     panel = Panel(rt, port)
+    try:
+        import fuads_supabase
+        fuads_supabase.start_publisher(rt)          # keeps the website's server address current after every restart
+    except Exception as err:  # noqa: BLE001
+        log(f"Address sync not started: {err}")
     httpd.RequestHandlerClass = make_handler(panel)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     log(f"Control panel on http://127.0.0.1:{port}/")

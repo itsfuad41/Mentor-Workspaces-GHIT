@@ -7,6 +7,7 @@ import io
 import json
 import os
 import re
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -342,7 +343,7 @@ def _parse(table, filename, b64):
         raise SbError("The sheet needs a header row and at least one data row.")
     header = [str(h or "").strip() for h in grid[0]]
     by_norm = {_norm(c["name"]): c["name"] for c in cols}
-    aliases = {"id": "op_id", "operatorid": "op_id", "opid": "op_id", "name": "full_name", "operatorname": "full_name", "mentor": "mentor_name", "contact": "contact_number", "phone": "contact_number", "phonenumber": "contact_number", "mobile": "contact_number", "mobilenumber": "contact_number", "cellnumber": "contact_number", "sex": "gender", "joindate": "joining_date", "dateofjoining": "joining_date", "doj": "joining_date", "joining": "joining_date"}
+    aliases = {"id": "op_id", "operatorid": "op_id", "opid": "op_id", "name": "full_name", "operatorname": "full_name", "mentor": "mentor_name", "contact": "phone_number", "contactnumber": "phone_number", "phone": "phone_number", "phonenumber": "phone_number", "mobile": "phone_number", "mobilenumber": "phone_number", "cellnumber": "phone_number", "sex": "gender", "joindate": "joining_date", "dateofjoining": "joining_date", "doj": "joining_date", "joining": "joining_date"}
     mapping = {}
     for i, h in enumerate(header):
         n = _norm(h)
@@ -407,3 +408,96 @@ def import_apply(table, filename, b64, mode):
             done += len(chunk)
     _audit("import", table, None, {"file": filename, "rows": done, "mode": mode})
     return {"ok": True, "rows": done}
+
+
+# ---------------- keep the website's server address up to date automatically ----------------
+class AddressPublisher(threading.Thread):
+    """After every restart the temporary link changes. This writes the current public address(es) and the user key
+    into the pc_server_config row the website reads, so nobody has to paste a new code."""
+    def __init__(self, rt):
+        super().__init__(daemon=True, name="address-publisher")
+        self.rt = rt
+        self.last = None            # (urls, view_key) last written successfully
+        self.state = {"ok": None, "when": "", "urls": "", "error": ""}
+        self.wake = threading.Event()
+
+    def current(self):
+        cfg = core.load_config()
+        urls = []
+        best = self.rt.best_url(cfg)
+        for u in [best] + [u for _l, u in self.rt.link_candidates(cfg)]:
+            u = str(u or "").strip().rstrip("/")
+            if u.startswith("https://") and u not in urls and (u == best or self.rt.link_live.get(u) or u == (self.rt.temp.url or "").rstrip("/")):
+                urls.append(u)
+        return urls[:3], cfg.get("view_key", "")
+
+    def publish(self, force=False):
+        cfg = core.load_config()
+        if not (cfg.get("sb_url") and cfg.get("sb_key")):
+            self.state.update(ok=None, error="Connect Supabase first.")
+            return self.state
+        if not cfg.get("sb_publish", True) and not force:
+            self.state.update(ok=None, error="")
+            return self.state
+        urls, key = self.current()
+        if not urls or not key:
+            self.state.update(ok=False, error="No public address yet (tunnel not connected). Will retry.")
+            return self.state
+        value = (",".join(urls), key)
+        if value == self.last and not force:
+            return self.state
+        try:
+            _req("POST", "/pc_server_config?on_conflict=id",
+                 {"id": 1, "url": value[0], "view_key": key, "updated_at": datetime.utcnow().isoformat() + "Z", "updated_by": "Fuad's Server (automatic)"},
+                 {"Prefer": "resolution=merge-duplicates,return=minimal"})
+            self.last = value
+            self.state.update(ok=True, when=datetime.now().strftime("%Y-%m-%d %H:%M:%S"), urls=value[0], error="")
+            core.log(f"Website address updated: {value[0]}") if hasattr(core, "log") else None
+        except SbError as e:
+            self.state.update(ok=False, error=str(e))
+        return self.state
+
+    def run(self):
+        time.sleep(12)                                  # let the tunnels come up first
+        while True:
+            try:
+                self.publish()
+            except Exception as e:  # noqa: BLE001 - never let the loop die
+                self.state.update(ok=False, error=str(e))
+            self.wake.wait(20)
+            self.wake.clear()
+
+
+PUBLISHER = None
+
+
+def start_publisher(rt):
+    global PUBLISHER
+    if PUBLISHER is None:
+        PUBLISHER = AddressPublisher(rt)
+        PUBLISHER.start()
+    return PUBLISHER
+
+
+def address_state():
+    cfg = core.load_config()
+    st = dict(PUBLISHER.state) if PUBLISHER else {"ok": None, "when": "", "urls": "", "error": ""}
+    st["enabled"] = bool(cfg.get("sb_publish", True))
+    st["connected"] = bool(cfg.get("sb_url") and cfg.get("sb_key"))
+    return st
+
+
+def address_set(enabled):
+    cfg = core.load_config()
+    cfg["sb_publish"] = bool(enabled)
+    core.save_config(cfg)
+    if PUBLISHER:
+        PUBLISHER.wake.set()
+    return address_state()
+
+
+def address_now():
+    if not PUBLISHER:
+        raise SbError("The address sync is not running yet.", 409)
+    PUBLISHER.publish(force=True)
+    return address_state()

@@ -141,6 +141,7 @@ def load_config():
         ("workspaces", []),
         ("sb_url", ""),
         ("sb_key", ""),
+        ("sb_publish", True),
         ("supabase_service_key", ""),
         ("ngrok_token", ""),
         ("ngrok_domain", ""),
